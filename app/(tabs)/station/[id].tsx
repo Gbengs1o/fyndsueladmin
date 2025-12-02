@@ -1,14 +1,13 @@
 // File: app/station/[id].tsx
 import { FontAwesome } from '@expo/vector-icons';
-import MapLibreGL from '@maplibre/maplibre-react-native';
 import { useIsFocused } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import StationIcon from '../../../components/StationIcon';
-import { MAPLIBRE_STYLES } from '../../../constants/MapStyle';
 import { useAuth } from '../../../context/AuthContext';
 import { useTheme } from '../../../context/ThemeContext';
 import { supabase } from '../../../lib/supabase';
@@ -42,7 +41,7 @@ export default function StationProfileScreen() {
     const isFocused = useIsFocused();
     const { theme, colors } = useTheme();
     const styles = useMemo(() => getThemedStyles(colors), [colors]);
-    const cameraRef = useRef<MapLibreGL.Camera>(null);
+    const mapRef = useRef<MapView>(null);
 
     const [station, setStation] = useState<StationDetails | null>(null);
     const [reports, setReports] = useState<PriceReport[]>([]);
@@ -135,36 +134,13 @@ export default function StationProfileScreen() {
     const handleTakeMeThere = () => { if (!station) return; const { latitude, longitude, name } = station; const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' }); const latLng = `${latitude},${longitude}`; const label = encodeURIComponent(name); const url = Platform.select({ ios: `${scheme}${label}@${latLng}`, android: `${scheme}${latLng}(${label})` }); if (url) { Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open maps application.")); } };
     const handleWriteReviewPress = async () => { if (!user) { Alert.alert("Login Required", "You must be signed in to write a review."); return; } if (!station) return; setIsCheckingLocation(true); try { const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }); const dist = haversineDistance(location.coords.latitude, location.coords.longitude, station.latitude, station.longitude); if (dist <= 200) { router.push(`/report/reportchat?stationId=${station.id}&stationName=${station.name}`); } else { Alert.alert("Too Far Away", `You must be within 200 meters of this station to write a review. You are currently about ${Math.round(dist)} meters away.`); } } catch (error) { Alert.alert("Location Error", "Could not get your current location."); } finally { setIsCheckingLocation(false); } };
 
-    // GeoJSON for station marker
-    const stationMarkerGeoJSON: GeoJSON.FeatureCollection = useMemo(() => {
-        if (!station) return { type: 'FeatureCollection', features: [] };
-        return {
-            type: 'FeatureCollection',
-            features: [{
-                type: 'Feature',
-                geometry: {
-                    type: 'Point',
-                    coordinates: [station.longitude, station.latitude]
-                },
-                properties: {
-                    id: station.id,
-                    name: station.name
-                }
-            }]
-        };
-    }, [station]);
-
-    // GeoJSON for route
-    const routeGeoJSON: GeoJSON.FeatureCollection = useMemo(() => {
-        if (!routeGeometry) return { type: 'FeatureCollection', features: [] };
-        return {
-            type: 'FeatureCollection',
-            features: [{
-                type: 'Feature',
-                geometry: routeGeometry,
-                properties: {}
-            }]
-        };
+    // Convert GeoJSON LineString to LatLng array for Polyline
+    const routeCoordinates = useMemo(() => {
+        if (!routeGeometry || routeGeometry.type !== 'LineString') return [];
+        return routeGeometry.coordinates.map(coord => ({
+            latitude: coord[1],
+            longitude: coord[0]
+        }));
     }, [routeGeometry]);
 
     if (loading) { return <View style={styles.centered}><ActivityIndicator size="large" color={colors.primary} /></View>; }
@@ -179,48 +155,38 @@ export default function StationProfileScreen() {
             <Stack.Screen options={{ title: 'Station Details', headerTintColor: colors.primary, headerStyle: { backgroundColor: colors.card }, headerTitleStyle: { color: colors.text } }} />
             <View style={styles.header}><Text style={styles.stationName}>{station.name}</Text><Text style={styles.stationBrand}>{station.brand || "Brand not specified"}</Text></View>
 
-            <MapLibreGL.MapView
+            <MapView
+                ref={mapRef}
                 style={styles.map}
-                styleURL={theme === 'dark' ? MAPLIBRE_STYLES.dark : MAPLIBRE_STYLES.light}
-                logoEnabled={false}
-                attributionEnabled={false}
+                provider={PROVIDER_GOOGLE}
+                initialRegion={{
+                    latitude: station.latitude,
+                    longitude: station.longitude,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                }}
+                showsUserLocation={true}
+                showsMyLocationButton={false}
             >
-                <MapLibreGL.Camera
-                    ref={cameraRef}
-                    centerCoordinate={[station.longitude, station.latitude]}
-                    zoomLevel={13}
-                />
-
-                <MapLibreGL.UserLocation visible={true} />
-
                 {/* Station marker */}
-                <MapLibreGL.ShapeSource id="station-marker" shape={stationMarkerGeoJSON}>
-                    <MapLibreGL.SymbolLayer
-                        id="station-icon"
-                        style={{
-                            iconImage: 'marker-15',
-                            iconSize: 1.5,
-                            iconColor: colors.primary,
-                            iconAllowOverlap: true,
-                        }}
-                    />
-                </MapLibreGL.ShapeSource>
+                <Marker
+                    coordinate={{ latitude: station.latitude, longitude: station.longitude }}
+                    title={station.name}
+                >
+                    <View style={{ alignItems: 'center', justifyContent: 'center' }}>
+                        <FontAwesome name="map-marker" size={40} color={colors.primary} />
+                    </View>
+                </Marker>
 
                 {/* Route line */}
-                {routeGeometry && (
-                    <MapLibreGL.ShapeSource id="route-source" shape={routeGeoJSON}>
-                        <MapLibreGL.LineLayer
-                            id="route-line"
-                            style={{
-                                lineColor: colors.primary,
-                                lineWidth: 4,
-                                lineCap: 'round',
-                                lineJoin: 'round',
-                            }}
-                        />
-                    </MapLibreGL.ShapeSource>
+                {routeCoordinates.length > 0 && (
+                    <Polyline
+                        coordinates={routeCoordinates}
+                        strokeColor={colors.primary}
+                        strokeWidth={4}
+                    />
                 )}
-            </MapLibreGL.MapView>
+            </MapView>
 
             <View style={styles.content}>
                 <View style={styles.detailsCard}>

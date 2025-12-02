@@ -1,21 +1,105 @@
 // File: app/map.tsx
 
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
-import MapLibreGL from '@maplibre/maplibre-react-native';
 import * as Location from 'expo-location';
 import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
-import { MAPLIBRE_STYLES } from '../../constants/MapStyle';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
 
-// Local Region type definition
-type Region = {
-    latitude: number;
-    longitude: number;
-    latitudeDelta: number;
-    longitudeDelta: number;
-};
+// --- MAP STYLES (Same as home.tsx) ---
+const darkMapStyle = [
+    {
+        "elementType": "geometry",
+        "stylers": [{ "color": "#242f3e" }]
+    },
+    {
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#746855" }]
+    },
+    {
+        "elementType": "labels.text.stroke",
+        "stylers": [{ "color": "#242f3e" }]
+    },
+    {
+        "featureType": "administrative.locality",
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#d59563" }]
+    },
+    {
+        "featureType": "poi",
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#d59563" }]
+    },
+    {
+        "featureType": "poi.park",
+        "elementType": "geometry",
+        "stylers": [{ "color": "#263c3f" }]
+    },
+    {
+        "featureType": "poi.park",
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#6b9a76" }]
+    },
+    {
+        "featureType": "road",
+        "elementType": "geometry",
+        "stylers": [{ "color": "#38414e" }]
+    },
+    {
+        "featureType": "road",
+        "elementType": "geometry.stroke",
+        "stylers": [{ "color": "#212a37" }]
+    },
+    {
+        "featureType": "road",
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#9ca5b3" }]
+    },
+    {
+        "featureType": "road.highway",
+        "elementType": "geometry",
+        "stylers": [{ "color": "#746855" }]
+    },
+    {
+        "featureType": "road.highway",
+        "elementType": "geometry.stroke",
+        "stylers": [{ "color": "#1f2835" }]
+    },
+    {
+        "featureType": "road.highway",
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#f3d19c" }]
+    },
+    {
+        "featureType": "transit",
+        "elementType": "geometry",
+        "stylers": [{ "color": "#2f3948" }]
+    },
+    {
+        "featureType": "transit.station",
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#d59563" }]
+    },
+    {
+        "featureType": "water",
+        "elementType": "geometry",
+        "stylers": [{ "color": "#17263c" }]
+    },
+    {
+        "featureType": "water",
+        "elementType": "labels.text.fill",
+        "stylers": [{ "color": "#515c6d" }]
+    },
+    {
+        "featureType": "water",
+        "elementType": "labels.text.stroke",
+        "stylers": [{ "color": "#17263c" }]
+    }
+];
+
+const lightMapStyle = [];
 
 interface Station {
     id: number;
@@ -26,28 +110,20 @@ interface Station {
     address?: string;
 }
 
-interface RouteStep {
-    maneuver: {
-        location: [number, number];
-        instruction: string;
-    };
-}
-
 export default function MapScreen() {
     const { theme, colors } = useTheme();
-    const mapRef = useRef<MapLibreGL.MapView>(null);
-    const cameraRef = useRef<MapLibreGL.Camera>(null);
+    const isDarkMode = theme === 'dark';
+    const mapRef = useRef<MapView>(null);
 
     const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
     const [stations, setStations] = useState<Station[]>([]);
-    const [routeCoordinates, setRouteCoordinates] = useState<any>(null); // GeoJSON LineString
+    const [routeCoordinates, setRouteCoordinates] = useState<any>(null);
     const [routeDistance, setRouteDistance] = useState<string>('');
     const [routeDuration, setRouteDuration] = useState<string>('');
     const [isRouting, setIsRouting] = useState(false);
     const [destinationQuery, setDestinationQuery] = useState('');
     const [isNavigating, setIsNavigating] = useState(false);
 
-    // Styles
     const styles = StyleSheet.create({
         container: { flex: 1, backgroundColor: colors.background },
         map: { flex: 1 },
@@ -148,7 +224,6 @@ export default function MapScreen() {
             const startLat = userLocation.coords.latitude;
             const startLng = userLocation.coords.longitude;
 
-            // Use OSRM public API
             const response = await fetch(
                 `https://router.project-osrm.org/route/v1/driving/${startLng},${startLat};${destLng},${destLat}?overview=full&geometries=geojson`
             );
@@ -156,25 +231,21 @@ export default function MapScreen() {
 
             if (data.code === 'Ok' && data.routes.length > 0) {
                 const route = data.routes[0];
-                setRouteCoordinates({
-                    type: 'LineString',
-                    coordinates: route.geometry.coordinates,
-                });
+                const coordinates = route.geometry.coordinates.map((coord: number[]) => ({
+                    latitude: coord[1],
+                    longitude: coord[0],
+                }));
+
+                setRouteCoordinates(coordinates);
                 setRouteDistance((route.distance / 1000).toFixed(1) + ' km');
                 setRouteDuration(Math.round(route.duration / 60) + ' min');
 
-                // Fit camera to route
-                const coordinates = route.geometry.coordinates;
-                const bounds = coordinates.reduce((acc: any, coord: any) => {
-                    return {
-                        ne: [Math.max(acc.ne[0], coord[0]), Math.max(acc.ne[1], coord[1])],
-                        sw: [Math.min(acc.sw[0], coord[0]), Math.min(acc.sw[1], coord[1])],
-                    };
-                }, { ne: [coordinates[0][0], coordinates[0][1]], sw: [coordinates[0][0], coordinates[0][1]] });
+                // Fit to route
+                mapRef.current?.fitToCoordinates(coordinates, {
+                    edgePadding: { top: 50, right: 50, bottom: 50, left: 50 },
+                    animated: true,
+                });
 
-                cameraRef.current?.fitBounds(bounds.ne, bounds.sw, 50, 1000);
-
-                // Fetch stations along route (simplified: just nearby destination for now)
                 fetchStationsNearby(destLat, destLng);
             }
         } catch (error) {
@@ -191,7 +262,7 @@ export default function MapScreen() {
                 .rpc('get_nearby_stations', {
                     lat,
                     long: lng,
-                    radius_meters: 5000 // 5km radius around destination
+                    radius_meters: 5000
                 });
 
             if (error) throw error;
@@ -204,7 +275,6 @@ export default function MapScreen() {
     const handleSearch = async () => {
         if (!destinationQuery.trim()) return;
 
-        // Simple geocoding using Nominatim (OpenStreetMap)
         try {
             const response = await fetch(
                 `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(destinationQuery)}`
@@ -241,61 +311,57 @@ export default function MapScreen() {
                 </View>
             </View>
 
-            <MapLibreGL.MapView
+            <MapView
                 ref={mapRef}
                 style={styles.map}
-                styleURL={theme === 'dark' ? MAPLIBRE_STYLES.dark : MAPLIBRE_STYLES.light}
-                logoEnabled={false}
-                attributionEnabled={false}
+                provider={PROVIDER_GOOGLE}
+                customMapStyle={isDarkMode ? darkMapStyle : lightMapStyle}
+                initialRegion={{
+                    latitude: userLocation?.coords.latitude || 0,
+                    longitude: userLocation?.coords.longitude || 0,
+                    latitudeDelta: 0.05,
+                    longitudeDelta: 0.05,
+                }}
+                showsUserLocation={true}
+                showsMyLocationButton={false}
             >
-                <MapLibreGL.Camera
-                    ref={cameraRef}
-                    defaultSettings={{
-                        centerCoordinate: [userLocation?.coords.longitude || 0, userLocation?.coords.latitude || 0],
-                        zoomLevel: 12,
-                    }}
-                    followUserLocation={!routeCoordinates}
-                    followUserMode={MapLibreGL.UserTrackingMode.Follow}
-                />
-
-                <MapLibreGL.UserLocation visible={true} />
-
-                {/* Route Line */}
                 {routeCoordinates && (
-                    <MapLibreGL.ShapeSource id="routeSource" shape={routeCoordinates}>
-                        <MapLibreGL.LineLayer
-                            id="routeFill"
-                            style={{
-                                lineColor: colors.primary,
-                                lineWidth: 5,
-                                lineOpacity: 0.8,
-                                lineCap: 'round',
-                                lineJoin: 'round',
-                            }}
-                        />
-                    </MapLibreGL.ShapeSource>
+                    <Polyline
+                        coordinates={routeCoordinates}
+                        strokeColor={colors.primary}
+                        strokeWidth={5}
+                        lineCap="round"
+                        lineJoin="round"
+                    />
                 )}
 
-                {/* Stations Markers */}
                 {stations.map((station) => (
-                    <MapLibreGL.PointAnnotation
+                    <Marker
                         key={station.id}
-                        id={`station-${station.id}`}
-                        coordinate={[station.longitude, station.latitude]}
+                        coordinate={{
+                            latitude: station.latitude,
+                            longitude: station.longitude,
+                        }}
+                        title={station.name}
+                        description={station.address}
                     >
                         <View style={{
-                            backgroundColor: '#fff',
-                            padding: 5,
-                            borderRadius: 15,
+                            backgroundColor: isDarkMode ? '#2a2a2a' : '#fff',
+                            padding: 8,
+                            borderRadius: 20,
                             borderWidth: 2,
                             borderColor: colors.primary,
+                            shadowColor: "#000",
+                            shadowOffset: { width: 0, height: 2 },
+                            shadowOpacity: 0.25,
+                            shadowRadius: 3.84,
+                            elevation: 5,
                         }}>
                             <FontAwesome name="gas-pump" size={16} color={colors.primary} />
                         </View>
-                        <MapLibreGL.Callout title={station.name} />
-                    </MapLibreGL.PointAnnotation>
+                    </Marker>
                 ))}
-            </MapLibreGL.MapView>
+            </MapView>
 
             {routeCoordinates && (
                 <View style={styles.routeInfoContainer}>
@@ -324,10 +390,6 @@ export default function MapScreen() {
                                 setIsNavigating(false);
                                 setRouteCoordinates(null);
                                 setDestinationQuery('');
-                                cameraRef.current?.setCamera({
-                                    zoomLevel: 14,
-                                    animationDuration: 1000,
-                                });
                             }}
                         >
                             <Text style={styles.startButtonText}>End Navigation</Text>

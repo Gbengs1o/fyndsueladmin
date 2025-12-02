@@ -7,9 +7,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:232668397571:android:f12f19fe24ec5437e34e36",
+        "mobilesdk_app_id": "1:232668397571:android:e3a1fd18581166e8e34e36",
         "android_client_info": {
-          "package_name": "com.yourname.gaspricenigeria"
+          "package_name": "com.yourname.fyndfuel"
         }
       },
       "oauth_client": [],

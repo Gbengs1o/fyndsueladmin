@@ -1,19 +1,19 @@
 // File: app/addStation.tsx
 
 import { FontAwesome } from '@expo/vector-icons';
-import MapLibreGL from '@maplibre/maplibre-react-native';
 import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import { router, Stack } from 'expo-router';
 import React, { useEffect, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { MAPLIBRE_STYLES } from '../../constants/MapStyle';
+import { ActivityIndicator, Alert, FlatList, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import MapView, { PROVIDER_GOOGLE, Region } from 'react-native-maps';
+// import { MAPLIBRE_STYLES } from '../../constants/MapStyle';
 import { useAuth } from '../../context/AuthContext'; // 1. Import useAuth to get the user
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
 
 // Keep Google Maps API Key for Places Autocomplete if needed, but MapLibre doesn't need it.
-const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.web?.config?.googleMaps?.apiKey || 'YOUR_GOOGLE_MAPS_API_KEY_FALLBACK';
+const GOOGLE_MAPS_API_KEY = Constants.expoConfig?.android?.config?.googleMaps?.apiKey || Constants.expoConfig?.ios?.config?.googleMaps?.apiKey || Constants.expoConfig?.web?.config?.googleMaps?.apiKey || 'YOUR_GOOGLE_MAPS_API_KEY_FALLBACK';
 
 interface GooglePlace {
     place_id: string;
@@ -25,10 +25,11 @@ interface GooglePlace {
 export default function AddStationScreen() {
     const { theme, colors } = useTheme();
     const { user } = useAuth(); // 2. Get the authenticated user
-    const mapRef = useRef<MapLibreGL.MapView>(null);
-    const cameraRef = useRef<MapLibreGL.Camera>(null);
+    const mapRef = useRef<MapView>(null);
 
-    const [region, setRegion] = useState<{ latitude: number; longitude: number; latitudeDelta: number; longitudeDelta: number } | null>(null);
+    const [region, setRegion] = useState<Region | null>(null);
+    const [userLocation, setUserLocation] = useState<Location.LocationObject | null>(null);
+    const [distanceToPin, setDistanceToPin] = useState<number>(0);
     const [address, setAddress] = useState('');
     const [stationName, setStationName] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -40,7 +41,7 @@ export default function AddStationScreen() {
     // Styles
     const styles = StyleSheet.create({
         container: { flex: 1, backgroundColor: colors.background },
-        mapContainer: { flex: 1, position: 'relative' },
+        mapContainer: { height: '45%', position: 'relative' },
         map: { flex: 1 },
         centerMarkerContainer: {
             position: 'absolute',
@@ -139,6 +140,13 @@ export default function AddStationScreen() {
             color: colors.textSecondary,
             marginTop: 2,
         },
+        warningText: {
+            color: '#ff4444',
+            fontSize: 13,
+            marginBottom: 16,
+            textAlign: 'center',
+            fontWeight: '600',
+        },
     });
 
     useEffect(() => {
@@ -150,6 +158,7 @@ export default function AddStationScreen() {
             }
 
             let location = await Location.getCurrentPositionAsync({});
+            setUserLocation(location);
             setRegion({
                 latitude: location.coords.latitude,
                 longitude: location.coords.longitude,
@@ -175,19 +184,38 @@ export default function AddStationScreen() {
         }
     };
 
-    const onRegionDidChange = async (feature: any) => {
-        const { coordinates } = feature.geometry;
-        const [longitude, latitude] = coordinates;
+    // Calculate distance between two coordinates using Haversine formula
+    const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371e3; // Earth radius in metres
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
 
-        setRegion({
-            latitude,
-            longitude,
-            latitudeDelta: 0.01, // approximate
-            longitudeDelta: 0.01, // approximate
-        });
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+
+        return R * c; // in metres
+    };
+
+    const onRegionDidChange = async (newRegion: Region) => {
+        setRegion(newRegion);
+
+        // Calculate distance from user's current location to the pin
+        if (userLocation) {
+            const dist = calculateDistance(
+                userLocation.coords.latitude,
+                userLocation.coords.longitude,
+                newRegion.latitude,
+                newRegion.longitude
+            );
+            setDistanceToPin(dist);
+        }
 
         // Debounce this in a real app
-        reverseGeocode(latitude, longitude);
+        reverseGeocode(newRegion.latitude, newRegion.longitude);
     };
 
     const handleSearch = async (text: string) => {
@@ -200,11 +228,6 @@ export default function AddStationScreen() {
         setIsSearching(true);
         try {
             // Use Google Places Autocomplete API via Supabase Edge Function or direct fetch if allowed
-            // For now, assuming we might still use Google Places for search even if map is MapLibre
-            // Or we could use a free geocoder like Nominatim, but Google is better for places.
-            // Let's use the existing pattern if possible.
-
-            // Simulating search for now or using a direct fetch if key is available
             const response = await fetch(
                 `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(text)}&key=${GOOGLE_MAPS_API_KEY}&types=establishment`
             );
@@ -238,17 +261,14 @@ export default function AddStationScreen() {
 
             if (data.status === 'OK') {
                 const { lat, lng } = data.result.geometry.location;
-                cameraRef.current?.setCamera({
-                    centerCoordinate: [lng, lat],
-                    zoomLevel: 16,
-                    animationDuration: 1000,
-                });
-                setRegion({
+                const newRegion = {
                     latitude: lat,
                     longitude: lng,
                     latitudeDelta: 0.005,
                     longitudeDelta: 0.005,
-                });
+                };
+                mapRef.current?.animateToRegion(newRegion, 1000);
+                setRegion(newRegion);
                 reverseGeocode(lat, lng);
             }
         } catch (error) {
@@ -266,11 +286,17 @@ export default function AddStationScreen() {
             return;
         }
 
+        // Check distance validation
+        if (distanceToPin > 200) {
+            Alert.alert("Too Far", "You must be within 200 meters of the location to add a station.");
+            return;
+        }
+
         // 3. Check if user is authenticated
         if (!user) {
             Alert.alert("Authentication Required", "You must be logged in to add a station.", [
                 { text: "Cancel", style: "cancel" },
-                { text: "Login", onPress: () => router.push('/(auth)/login') } // Adjust route as needed
+                { text: "Login", onPress: () => router.push('/(auth)/login') }
             ]);
             return;
         }
@@ -285,15 +311,15 @@ export default function AddStationScreen() {
                         latitude: region.latitude,
                         longitude: region.longitude,
                         address: address,
-                        submitted_by: user.id, // 4. Include the user ID
-                        status: 'pending' // Optional: if you have a moderation flow
+                        submitted_by: user.id,
+                        status: 'pending'
                     }
                 ])
                 .select();
 
             if (error) throw error;
 
-            Alert.alert("Success", "Station added successfully!", [
+            Alert.alert("Success", "Station added successfully! It will be visible once approved by our team.", [
                 { text: "OK", onPress: () => router.back() }
             ]);
         } catch (error: any) {
@@ -303,33 +329,28 @@ export default function AddStationScreen() {
         }
     };
 
+    const isSubmitDisabled = isSubmitting || distanceToPin > 200;
+
     return (
         <View style={styles.container}>
             <Stack.Screen options={{ title: 'Add New Station', headerBackTitle: 'Back' }} />
 
             <View style={styles.mapContainer}>
                 {region && (
-                    <MapLibreGL.MapView
+                    <MapView
                         ref={mapRef}
                         style={styles.map}
-                        styleURL={theme === 'dark' ? MAPLIBRE_STYLES.dark : MAPLIBRE_STYLES.light}
-                        onRegionDidChange={onRegionDidChange}
-                        logoEnabled={false}
-                        attributionEnabled={false}
-                    >
-                        <MapLibreGL.Camera
-                            ref={cameraRef}
-                            defaultSettings={{
-                                centerCoordinate: [region.longitude, region.latitude],
-                                zoomLevel: 15,
-                            }}
-                        />
-                    </MapLibreGL.MapView>
+                        provider={PROVIDER_GOOGLE}
+                        initialRegion={region}
+                        onRegionChangeComplete={onRegionDidChange}
+                        showsUserLocation={true}
+                        showsMyLocationButton={false}
+                    />
                 )}
 
                 {/* Center Marker (Static) */}
                 <View style={styles.centerMarkerContainer}>
-                    <FontAwesome name="map-marker" size={48} color={colors.primary} />
+                    <FontAwesome name="map-marker" size={48} color={distanceToPin > 200 ? '#ff4444' : colors.primary} />
                 </View>
 
                 {/* Search Bar Overlay */}
@@ -358,32 +379,41 @@ export default function AddStationScreen() {
                 </View>
             </View>
 
-            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
-                <View style={styles.formContainer}>
-                    <Text style={styles.label}>Station Name</Text>
-                    <TextInput
-                        style={styles.input}
-                        placeholder="e.g. Shell Station"
-                        placeholderTextColor={colors.textSecondary}
-                        value={stationName}
-                        onChangeText={setStationName}
-                    />
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+                <ScrollView contentContainerStyle={{ flexGrow: 1 }}>
+                    <View style={styles.formContainer}>
+                        <Text style={styles.label}>Station Name</Text>
+                        <TextInput
+                            style={styles.input}
+                            placeholder="e.g. Shell Station"
+                            placeholderTextColor={colors.textSecondary}
+                            value={stationName}
+                            onChangeText={setStationName}
+                        />
 
-                    <Text style={styles.label}>Address</Text>
-                    <Text style={styles.addressText}>{address || "Move map to select location"}</Text>
+                        <Text style={styles.label}>Address</Text>
+                        <Text style={styles.addressText}>{address || "Move map to select location"}</Text>
 
-                    <Pressable
-                        style={[styles.submitButton, isSubmitting && { opacity: 0.7 }]}
-                        onPress={handleSubmit}
-                        disabled={isSubmitting}
-                    >
-                        {isSubmitting ? (
-                            <ActivityIndicator color="#fff" />
-                        ) : (
-                            <Text style={styles.submitButtonText}>Add Station</Text>
+                        {distanceToPin > 200 && (
+                            <Text style={styles.warningText}>
+                                ⚠️ You are too far from this location ({Math.round(distanceToPin)}m).
+                                You must be within 200m to add a station.
+                            </Text>
                         )}
-                    </Pressable>
-                </View>
+
+                        <Pressable
+                            style={[styles.submitButton, isSubmitDisabled && { opacity: 0.5, backgroundColor: '#999' }]}
+                            onPress={handleSubmit}
+                            disabled={isSubmitDisabled}
+                        >
+                            {isSubmitting ? (
+                                <ActivityIndicator color="#fff" />
+                            ) : (
+                                <Text style={styles.submitButtonText}>Add Station</Text>
+                            )}
+                        </Pressable>
+                    </View>
+                </ScrollView>
             </KeyboardAvoidingView>
         </View>
     );

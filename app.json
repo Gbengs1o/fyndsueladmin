@@ -27,7 +27,12 @@
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
-      ]
+      ],
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyCHkNvB2RLbbyZT9YthpyVDxGSP4Z7qF9o"
+        }
+      }
     },
     "web": {
       "bundler": "metro",
@@ -44,15 +49,7 @@
       ],
       "expo-secure-store",
       "@react-native-google-signin/google-signin",
-      "expo-notifications",
-      [
-        "@maplibre/maplibre-react-native",
-        {
-          "android": {
-            "impl": "mapbox"
-          }
-        }
-      ]
+      "expo-notifications"
     ],
     "experiments": {
       "typedRoutes": true

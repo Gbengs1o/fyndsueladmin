@@ -1,9 +1,9 @@
-// MapLibre style URLs for OpenFreeMap
-// OpenFreeMap provides free vector tiles without API keys
+// MapLibre style URLs - Using Maptiler's demo style (free, more reliable)
+// This uses OpenStreetMap data with a stable tile server
 
 export const MAPLIBRE_STYLES = {
-  light: 'https://tiles.openfreemap.org/styles/liberty/style.json',
-  dark: 'https://tiles.openfreemap.org/styles/liberty/style.json', // Using same style for now, can be customized
+  light: 'https://demotiles.maplibre.org/style.json',
+  dark: 'https://demotiles.maplibre.org/style.json', // Using same style for now
 };
 
 // Helper function to get style URL based on theme
@@ -11,5 +11,5 @@ export const getMapStyle = (theme: 'light' | 'dark') => {
   return MAPLIBRE_STYLES[theme];
 };
 
-// Re-export for compatibility (empty function, not used in MapLibre)
+// Re-export for compatibility
 export const createMapStyle = () => [];

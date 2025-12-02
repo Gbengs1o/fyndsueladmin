@@ -42,6 +42,8 @@
     "react-native-gesture-handler": "~2.16.1",
     "react-native-get-random-values": "^1.11.0",
     "react-native-google-places-autocomplete": "^2.5.7",
+    "react-native-map-clustering": "^4.0.0",
+    "react-native-maps": "1.14.0",
     "react-native-mmkv": "^2.12.2",
     "react-native-otp-entry": "^1.8.5",
     "react-native-otp-textinput": "^1.1.7",

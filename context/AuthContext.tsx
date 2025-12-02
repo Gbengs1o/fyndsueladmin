@@ -1,10 +1,10 @@
 // File: context/AuthContext.tsx
 
-import React, { useState, useEffect, createContext, useContext, PropsWithChildren, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
-import { supabase } from '../lib/supabase';
 import * as Notifications from 'expo-notifications';
-import { Platform, Alert } from 'react-native';
+import React, { createContext, PropsWithChildren, useCallback, useContext, useEffect, useState } from 'react';
+import { Alert, Platform } from 'react-native';
+import { supabase } from '../lib/supabase';
 
 // --- ADDED: Define a type for the user profile ---
 type ProfileType = {
@@ -25,9 +25,8 @@ type AuthContextType = {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// This function handles getting permission and the push token (no changes here)
+// This function handles getting permission and the push token
 async function registerForPushNotificationsAsync(userId: string): Promise<string | undefined> {
-  // ... (this function remains exactly the same)
   let token;
   try {
     const { status: existingStatus } = await Notifications.getPermissionsAsync();
@@ -40,7 +39,7 @@ async function registerForPushNotificationsAsync(userId: string): Promise<string
       return;
     }
     token = (await Notifications.getExpoPushTokenAsync({
-      projectId: '974cfc38-9485-4dad-ac04-aa5c46b42a76', 
+      projectId: '974cfc38-9485-4dad-ac04-aa5c46b42a76',
     })).data;
     if (token) {
       await supabase
@@ -72,11 +71,10 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<ProfileType | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
 
-  // --- ADDED: The missing fetchProfile function ---
-  // Wrapped in useCallback for performance, as recommended by React hooks rules.
+  // --- MODIFIED: fetchProfile with JWT expiration handling ---
   const fetchProfile = useCallback(async (user: User) => {
-    if (!user) return; // Don't run if there's no user
-    
+    if (!user) return;
+
     setIsProfileLoading(true);
     try {
       const { data, error, status } = await supabase
@@ -86,16 +84,29 @@ export function AuthProvider({ children }: PropsWithChildren) {
         .single();
 
       if (error && status !== 406) {
+        // Check if it's a JWT expiration error
+        if (error.message && (error.message.includes('JWT expired') || error.code === 'PGRST301')) {
+          console.log('JWT expired while fetching profile. Signing out...');
+          await supabase.auth.signOut();
+          return;
+        }
         throw error;
       }
 
       if (data) {
         setProfile(data as ProfileType);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error fetching user profile:', error);
-      // Set profile to null on error to allow the UI to show an error state
-      setProfile(null); 
+
+      // Double-check for JWT expiration in catch block
+      if (error?.message?.includes('JWT expired') || error?.code === 'PGRST301') {
+        console.log('JWT expired (caught). Signing out...');
+        await supabase.auth.signOut();
+        return;
+      }
+
+      setProfile(null);
     } finally {
       setIsProfileLoading(false);
     }
@@ -105,26 +116,24 @@ export function AuthProvider({ children }: PropsWithChildren) {
     const fetchSessionAndData = async () => {
       const { data: { session: currentSession } } = await supabase.auth.getSession();
       setSession(currentSession);
-      
+
       if (currentSession?.user) {
-        await fetchProfile(currentSession.user); // Fetch profile on initial load
+        await fetchProfile(currentSession.user);
         await registerForPushNotificationsAsync(currentSession.user.id);
       }
       setIsLoading(false);
     };
-    
+
     fetchSessionAndData();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
       setSession(newSession);
 
-      // If a user just logged in, fetch their profile and register for push notifications
       if (_event === 'SIGNED_IN' && newSession?.user) {
         await fetchProfile(newSession.user);
         await registerForPushNotificationsAsync(newSession.user.id);
       }
-      
-      // If user signed out, clear the profile data
+
       if (_event === 'SIGNED_OUT') {
         setProfile(null);
       }
@@ -133,7 +142,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     return () => {
       subscription.unsubscribe();
     };
-  }, [fetchProfile]); // Added fetchProfile to dependency array
+  }, [fetchProfile]);
 
   const signOut = async (callback?: () => void) => {
     if (session?.user.id) {
@@ -148,15 +157,14 @@ export function AuthProvider({ children }: PropsWithChildren) {
     }
   };
 
-  // --- MODIFIED: Add the new state and functions to the provided value ---
   const value = {
     session,
     user: session?.user ?? null,
-    profile, // Added
+    profile,
     isLoading,
-    isProfileLoading, // Added
+    isProfileLoading,
     signOut,
-    fetchProfile, // Added
+    fetchProfile,
   };
 
   return (
