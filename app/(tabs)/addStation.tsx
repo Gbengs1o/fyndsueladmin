@@ -304,7 +304,7 @@ export default function AddStationScreen() {
         setIsSubmitting(true);
         try {
             const { data, error } = await supabase
-                .from('stations')
+                .from('suggested_fuel_stations')
                 .insert([
                     {
                         name: stationName,
@@ -319,7 +319,7 @@ export default function AddStationScreen() {
 
             if (error) throw error;
 
-            Alert.alert("Success", "Station added successfully! It will be visible once approved by our team.", [
+            Alert.alert("Success", "Station suggestion submitted! It will be visible once approved.", [
                 { text: "OK", onPress: () => router.back() }
             ]);
         } catch (error: any) {
@@ -333,7 +333,7 @@ export default function AddStationScreen() {
 
     return (
         <View style={styles.container}>
-            <Stack.Screen options={{ title: 'Add New Station', headerBackTitle: 'Back' }} />
+            <Stack.Screen options={{ title: 'Suggest New Station', headerBackTitle: 'Back' }} />
 
             <View style={styles.mapContainer}>
                 {region && (

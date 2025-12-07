@@ -54,6 +54,8 @@ export default function StationProfileScreen() {
     const [isAmenitiesExpanded, setIsAmenitiesExpanded] = useState(false);
     const [isCommentsExpanded, setIsCommentsExpanded] = useState(false);
     const [routeGeometry, setRouteGeometry] = useState<GeoJSON.LineString | null>(null);
+    const [isFlagged, setIsFlagged] = useState(false);
+    const [isFlagging, setIsFlagging] = useState(false);
 
     // Fetch route from OSRM when user location and station are available
     useEffect(() => {
@@ -103,6 +105,25 @@ export default function StationProfileScreen() {
     }, [isFocused, id]);
 
     useEffect(() => { if (station && userLocation) { const dist = haversineDistance(userLocation.latitude, userLocation.longitude, station.latitude, station.longitude); setDistance(dist); setTravelTimes(calculateTravelTime(dist)); } }, [station, userLocation]);
+
+    // Check if current user has flagged this station
+    useEffect(() => {
+        const checkFlagStatus = async () => {
+            if (!user || !id) return;
+            try {
+                const { data, error } = await supabase
+                    .from('flagged_stations')
+                    .select('id')
+                    .eq('station_id', id)
+                    .eq('user_id', user.id)
+                    .single();
+                setIsFlagged(!!data);
+            } catch (error) {
+                setIsFlagged(false);
+            }
+        };
+        checkFlagStatus();
+    }, [user, id]);
     useEffect(() => { const initialIndexState: { [key: string]: number } = {}; ALL_FUEL_TYPES.forEach(fuel => { initialIndexState[fuel] = 0; }); setHistoryIndex(initialIndexState); }, [reports]);
 
     const { priceHistories, allAmenities, ratingSummary, leaderboard } = useMemo(() => {
@@ -133,6 +154,47 @@ export default function StationProfileScreen() {
     const handleHistoryNavigation = (fuel: string, direction: 'newer' | 'older') => { const history = priceHistories.get(fuel) || []; const maxIndex = history.length > 0 ? history.length - 1 : 0; setHistoryIndex(prev => { const currentIndex = prev[fuel] || 0; if (direction === 'older' && currentIndex < maxIndex) return { ...prev, [fuel]: currentIndex + 1 }; if (direction === 'newer' && currentIndex > 0) return { ...prev, [fuel]: currentIndex - 1 }; return prev; }); };
     const handleTakeMeThere = () => { if (!station) return; const { latitude, longitude, name } = station; const scheme = Platform.select({ ios: 'maps:0,0?q=', android: 'geo:0,0?q=' }); const latLng = `${latitude},${longitude}`; const label = encodeURIComponent(name); const url = Platform.select({ ios: `${scheme}${label}@${latLng}`, android: `${scheme}${latLng}(${label})` }); if (url) { Linking.openURL(url).catch(() => Alert.alert("Error", "Could not open maps application.")); } };
     const handleWriteReviewPress = async () => { if (!user) { Alert.alert("Login Required", "You must be signed in to write a review."); return; } if (!station) return; setIsCheckingLocation(true); try { const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High }); const dist = haversineDistance(location.coords.latitude, location.coords.longitude, station.latitude, station.longitude); if (dist <= 200) { router.push(`/report/reportchat?stationId=${station.id}&stationName=${station.name}`); } else { Alert.alert("Too Far Away", `You must be within 200 meters of this station to write a review. You are currently about ${Math.round(dist)} meters away.`); } } catch (error) { Alert.alert("Location Error", "Could not get your current location."); } finally { setIsCheckingLocation(false); } };
+
+    const handleFlagToggle = async () => {
+        if (!user) {
+            Alert.alert("Login Required", "You must be signed in to flag a station.");
+            return;
+        }
+        if (!station) return;
+
+        setIsFlagging(true);
+        try {
+            if (isFlagged) {
+                // Unflag the station
+                const { error } = await supabase
+                    .from('flagged_stations')
+                    .delete()
+                    .eq('station_id', station.id)
+                    .eq('user_id', user.id);
+
+                if (error) throw error;
+                setIsFlagged(false);
+                Alert.alert("Unflagged", "You have removed your flag from this station.");
+            } else {
+                // Flag the station
+                const { error } = await supabase
+                    .from('flagged_stations')
+                    .insert({
+                        station_id: station.id,
+                        user_id: user.id,
+                        reason: 'Station does not exist'
+                    });
+
+                if (error) throw error;
+                setIsFlagged(true);
+                Alert.alert("Flagged", "Thank you for reporting this station. We will review it.");
+            }
+        } catch (error: any) {
+            Alert.alert("Error", `Failed to update flag status: ${error.message}`);
+        } finally {
+            setIsFlagging(false);
+        }
+    };
 
     // Convert GeoJSON LineString to LatLng array for Polyline
     const routeCoordinates = useMemo(() => {
@@ -201,6 +263,27 @@ export default function StationProfileScreen() {
                     <Text style={styles.detailAddressText}>Address details not available</Text>
                     <View style={styles.detailHoursRow}><FontAwesome name="clock-o" size={20} color={colors.textSecondary} style={{ marginRight: 8 }} /><Text style={styles.detailHoursText}>{allAmenities.includes("Open 24/7") ? "Open 24/7" : "Hours not specified"}</Text></View>
                     <Pressable style={styles.takeMeThereButton} onPress={handleTakeMeThere}><Text style={styles.takeMeThereButtonText}>Take me there</Text></Pressable>
+                    <Pressable
+                        style={[styles.flagButton, isFlagged && styles.flagButtonActive]}
+                        onPress={handleFlagToggle}
+                        disabled={isFlagging}
+                    >
+                        {isFlagging ? (
+                            <ActivityIndicator color={colors.primaryText} size="small" />
+                        ) : (
+                            <>
+                                <FontAwesome
+                                    name={isFlagged ? "flag" : "flag-o"}
+                                    size={16}
+                                    color={isFlagged ? "#fff" : colors.destructive}
+                                    style={{ marginRight: 8 }}
+                                />
+                                <Text style={[styles.flagButtonText, isFlagged && styles.flagButtonTextActive]}>
+                                    {isFlagged ? "Station Flagged" : "Flag if Doesn't Exist"}
+                                </Text>
+                            </>
+                        )}
+                    </Pressable>
                 </View>
 
                 <View style={styles.priceReportContainer}><View style={styles.priceReportHeader}><Text style={styles.priceReportTitle}>Station Price</Text></View>{ALL_FUEL_TYPES.map(fuel => { const history = priceHistories.get(fuel) || []; const currentIndex = historyIndex[fuel] || 0; const currentData = history[currentIndex]; const isNewerDisabled = currentIndex === 0; const isOlderDisabled = currentIndex >= history.length - 1; return (<View key={fuel} style={styles.priceRow}><Text style={styles.fuelNameText}>{fuel}</Text><View style={styles.priceInteractionWrapper}><Pressable onPress={() => handleHistoryNavigation(fuel, 'newer')} disabled={isNewerDisabled} style={styles.arrowButton}><FontAwesome name="chevron-left" size={16} color={isNewerDisabled ? colors.disabled : colors.primary} /></Pressable><View style={styles.priceInfoBox}>{currentData ? (<><Text style={styles.priceValueText}>₦{currentData.price}/{fuel === 'Gas' ? 'KG' : 'L'}</Text><Text style={styles.priceTimestampText}>{formatTimestamp(currentData.created_at)}</Text></>) : <Text style={styles.priceValueText}>N/A</Text>}</View><Pressable onPress={() => handleHistoryNavigation(fuel, 'older')} disabled={isOlderDisabled} style={styles.arrowButton}><FontAwesome name="chevron-right" size={16} color={isOlderDisabled ? colors.disabled : colors.primary} /></Pressable></View></View>); })}<Pressable style={[styles.reportPriceButton, isCheckingLocation && styles.buttonDisabled]} onPress={handleReportPress} disabled={isCheckingLocation}>{isCheckingLocation ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.reportPriceButtonText}>Report Price</Text>}</Pressable></View>
@@ -234,6 +317,10 @@ const getThemedStyles = (colors: AppColors) => StyleSheet.create({
     detailHoursText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary },
     takeMeThereButton: { backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 40, borderRadius: 8, width: '80%', alignItems: 'center' },
     takeMeThereButtonText: { color: colors.primaryText, fontSize: 16, fontWeight: 'bold' },
+    flagButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.destructive, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, width: '80%', marginTop: 12 },
+    flagButtonActive: { backgroundColor: colors.destructive, borderColor: colors.destructive },
+    flagButtonText: { color: colors.destructive, fontSize: 14, fontWeight: '600' },
+    flagButtonTextActive: { color: '#fff' },
     buttonDisabled: { opacity: 0.7 },
     noDataText: { color: colors.textSecondary, fontStyle: 'italic', textAlign: 'center', padding: 20 },
     cardContainer: { backgroundColor: colors.card, borderRadius: 10, padding: 15, marginBottom: 20, ...Platform.select({ ios: { shadowColor: colors.shadow, shadowOffset: { width: 1, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4 }, android: { elevation: 4 } }) },

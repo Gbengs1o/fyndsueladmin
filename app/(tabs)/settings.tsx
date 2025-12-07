@@ -3,12 +3,13 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useIsFocused } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { LetterAvatar } from '../../components/LetterAvatar';
 import { SettingsRow } from '../../components/SettingsRow';
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext'; // Import our hook
+import { supabase } from '../../lib/supabase';
 
 // We get the color type directly from the hook
 type AppColors = ReturnType<typeof useTheme>['colors'];
@@ -22,7 +23,6 @@ export default function SettingsScreen() {
   const { user, profile, fetchProfile, signOut, isLoading: isAuthLoading, isProfileLoading } = useAuth();
   const router = useRouter();
   const isFocused = useIsFocused();
-  const [notificationsEnabled, setNotificationsEnabled] = useState(true);
 
   useEffect(() => {
     if (isFocused && user) {
@@ -81,20 +81,7 @@ export default function SettingsScreen() {
         <SettingsRow label="Contact Us" iconName="mail-outline" onPress={() => router.push('/contact-us')} />
       </View>
 
-      <View style={styles.switchRow}>
-        <Ionicons name="notifications-outline" size={22} color={colors.text} style={styles.icon} />
-        <View style={styles.switchTextContainer}>
-          <Text style={styles.label}>Push Notifications</Text>
-          <Text style={styles.labelDescription}>Automatically send me notifications</Text>
-        </View>
-        <Switch
-          trackColor={{ false: colors.switchTrack, true: colors.primary }}
-          thumbColor={colors.switchThumb}
-          onValueChange={() => setNotificationsEnabled(previousState => !previousState)}
-          value={notificationsEnabled}
-        />
-      </View>
-
+      
       <View style={styles.section}>
         <SettingsRow label="Delete Account" iconName="trash-outline" onPress={() => router.push('/delete-account')} isDestructive />
       </View>

@@ -32,19 +32,7 @@ export function GlobalHeader() {
                 </Pressable>
 
                 <View style={styles.rightContainer}>
-                    <Pressable
-                        style={({ pressed }) => [styles.iconButton, { backgroundColor: pressed ? (isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)') : 'transparent', transform: [{ scale: pressed ? 0.95 : 1 }] }]}
-                        onPress={() => router.push('/notifications')}
-                    >
-                        <View style={styles.notificationContainer}>
-                            <View style={styles.iconContainer}>
-                                <Ionicons name="notifications-outline" size={16} color={colors.text} />
-                            </View>
-                            <View style={styles.notificationBadge}>
-                                <View style={styles.badgeDot} />
-                            </View>
-                        </View>
-                    </Pressable>
+
                     <View style={styles.themeToggleContainer}>
                         <ThemeToggle />
                     </View>

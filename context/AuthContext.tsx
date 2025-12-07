@@ -10,6 +10,7 @@ import { supabase } from '../lib/supabase';
 type ProfileType = {
   full_name: string;
   avatar_url: string;
+  push_notifications_enabled?: boolean;
 };
 
 // --- MODIFIED: Update the context type to include profile data and functions ---
@@ -79,7 +80,7 @@ export function AuthProvider({ children }: PropsWithChildren) {
     try {
       const { data, error, status } = await supabase
         .from('profiles')
-        .select(`full_name, avatar_url`)
+        .select(`full_name, avatar_url, push_notifications_enabled`)
         .eq('id', user.id)
         .single();
 
