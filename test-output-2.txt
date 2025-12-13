@@ -1,0 +1,4 @@
+Attempting to sign up user: test.antigravity.1764976740428@gmail.com
+Signup Success!
+User ID: d338612e-dda9-4d93-9b90-23a001dfd16f
+Session: Null (Email Confirmation Required?)
