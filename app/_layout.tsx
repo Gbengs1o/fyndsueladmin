@@ -4,22 +4,61 @@
 import 'react-native-get-random-values';
 
 // FIX #2: The main React object must be imported to use JSX.
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
+import { StyleSheet, View } from 'react-native';
 
-import { Stack, SplashScreen, useRouter, useSegments } from 'expo-router';
+import * as Linking from 'expo-linking';
+import { SplashScreen, Stack, useRouter, useSegments } from 'expo-router';
+import AnimatedSplashScreen from '../components/AnimatedSplashScreen';
 import { AuthProvider, useAuth } from '../context/AuthContext';
 import { ThemeProvider, useTheme } from '../context/ThemeContext';
-import { ActivityIndicator, View } from 'react-native';
+
+import * as Notifications from 'expo-notifications';
 
 // Keep the splash screen visible until we are ready to render the right screen.
 SplashScreen.preventAutoHideAsync();
 
+// Configure notifications to show alerts and play sound when app is in foreground
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 function RootLayoutNav() {
   const { isLoadingTheme } = useTheme();
   const { session, isLoading: isAuthLoading } = useAuth();
-  
+  const [isAnimationFinished, setIsAnimationFinished] = useState(false);
+
   const router = useRouter();
   const segments = useSegments();
+
+  useEffect(() => {
+    // Hide the native splash screen as soon as functionality allows, 
+    // so we can show our custom animated one.
+    SplashScreen.hideAsync();
+
+    // Listen for incoming URLs (deep links)
+    const handleDeepLink = (event: { url: string }) => {
+      // Supabase OAuth redirect usually looks like: explscheme://google-auth#access_token=...&refresh_token=...
+      // or sometimes as query params ?access_token=...
+      // The GoogleAuthButton handles the parsing if we are using openAuthSessionAsync.
+      // However, if the session is opened in a way that triggers a full app open (not modal),
+      // we might need global handling.
+      // But purely for Supabase + expo-auth-session as implemented in GoogleAuthButton,
+      // the 'await WebBrowser.openAuthSessionAsync' call usually captures the return URL directly.
+      // We adding this just in case we need to handle manual re-opening.
+      console.log("Deep link received:", event.url);
+    };
+
+    const subscription = Linking.addEventListener('url', handleDeepLink);
+
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
   useEffect(() => {
     if (isLoadingTheme || isAuthLoading) {
@@ -27,20 +66,20 @@ function RootLayoutNav() {
     }
 
     const inTabsGroup = segments[0] === '(tabs)';
-    
+
     // =======================================================================
     // START OF FIX
     // We add a new variable to check if the user is on the reset password page.
     const isResetPasswordPage = segments[0] === '(auth)' && segments[1] === 'resetPassword';
     // END OF FIX
     // =======================================================================
-    
+
     // This part is the same:
     // If the user is NOT signed in and is trying to access a protected route...
     if (!session && inTabsGroup) {
       // Redirect them to the sign-in page.
       router.replace('/(auth)/signIn');
-    } 
+    }
     // If the user IS signed in...
     else if (session) {
       // =======================================================================
@@ -54,43 +93,41 @@ function RootLayoutNav() {
       // END OF FIX
       // =======================================================================
     }
-    
-    // Once everything is ready and navigation is handled, hide the splash screen.
-    SplashScreen.hideAsync();
+
+    // We no longer hide splash screen here, we did it on mount.
+    // SplashScreen.hideAsync();
 
   }, [isLoadingTheme, isAuthLoading, session, segments]);
 
-  if (isLoadingTheme || isAuthLoading) {
-    return (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-            <ActivityIndicator size="large"/>
-        </View>
-    );
-  }
-
+  // We always render the Stack, but we overlay the splash screen if needed.
   return (
-    <Stack>
-      {/* These are layout groups. The router will look for a _layout.tsx file inside them. */}
-      <Stack.Screen name="index" options={{ headerShown: false }} />
-      <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
-      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
-      <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-      
-      {/* These are individual screens. The router will look for a matching file in the `app` directory. */}
-      {/* For example, `app/station/[id].tsx` is required for the route below. */}
-      <Stack.Screen name="station/[id]" options={{ headerShown: true, title: "Station Details" }} />
-      <Stack.Screen name="addStation" options={{ presentation: 'modal', title: "Add New Station" }} />
-      <Stack.Screen name="report/submit" options={{ presentation: 'modal', title: "Submit Fuel Report" }} />
-      <Stack.Screen name="locationSearch" options={{ presentation: 'modal', title: "Select Location" }} />
-      
-      {/* Profile and Settings Modals */}
-      {/* For these to work, you must have files like `app/profile.tsx`, `app/change-password.tsx`, etc. */}
-      <Stack.Screen name="profile" options={{ presentation: 'modal', title: "View Profile" }} />
-      <Stack.Screen name="change-password" options={{ presentation: 'modal', title: "Change Password" }} />
-      <Stack.Screen name="privacy-policy" options={{ presentation: 'modal', title: "Privacy Policy" }} />
-      <Stack.Screen name="contact-us" options={{ presentation: 'modal', title: "Contact Us" }} />
-      <Stack.Screen name="delete-account" options={{ presentation: 'modal', title: "Delete Account" }} />
-    </Stack>
+    <View style={{ flex: 1 }}>
+      <Stack>
+        {/* These are layout groups. The router will look for a _layout.tsx file inside them. */}
+        <Stack.Screen name="index" options={{ headerShown: false }} />
+        <Stack.Screen name="(onboarding)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+
+        {/* These are individual screens. The router will look for a matching file in the `app` directory. */}
+        {/* For example, `app/station/[id].tsx` is required for the route below. */}
+
+        {/* Note: 'station/[id]' is effectively in (tabs), but if we want it global, we must have it here or handle via deep link.
+            Since the file is in app/(tabs)/station/[id].tsx, the route is (tabs)/station/[id].
+            Referencing it here as 'station/[id]' ONLY works if app/station/[id].tsx exists. It DOES NOT.
+            So we remove the invalid ones to stop warnings.
+        */}
+
+        {/* If we want to show 'add-station' as a modal, and the file is app/add-station.tsx, we list it here. */}
+        <Stack.Screen name="add-station" options={{ presentation: 'modal', title: "Add New Station" }} />
+      </Stack>
+
+      {(isLoadingTheme || isAuthLoading || !isAnimationFinished) && (
+        <View style={StyleSheet.absoluteFill}>
+          <AnimatedSplashScreen onAnimationFinish={() => setIsAnimationFinished(true)} />
+        </View>
+      )}
+    </View>
   );
 }
 

@@ -16,7 +16,7 @@ type AppColors = ReturnType<typeof useTheme>['colors'];
 const MOOD_RATINGS = ['Very bad', 'Bad', 'Good', 'Better', 'Excellent'];
 const EMOJI_RATINGS = ['😖', '😕', '😐', '😊', '😍'];
 
-function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number { const R = 6371e3; const p1 = lat1 * Math.PI/180; const p2 = lat2 * Math.PI/180; const dp = (lat2-lat1) * Math.PI/180; const dl = (lon2-lon1) * Math.PI/180; const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2); const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); return R * c; }
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number { const R = 6371e3; const p1 = lat1 * Math.PI / 180; const p2 = lat2 * Math.PI / 180; const dp = (lat2 - lat1) * Math.PI / 180; const dl = (lon2 - lon1) * Math.PI / 180; const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2); const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return R * c; }
 
 const StarRatingDisplay = ({ rating, colors }: { rating: number, colors: AppColors }) => {
     const styles = useMemo(() => getThemedStyles(colors), [colors]);
@@ -33,13 +33,13 @@ const StarRatingDisplay = ({ rating, colors }: { rating: number, colors: AppColo
 };
 
 export default function SubmitCommentScreen() {
-    const { stationId, lat, lon } = useLocalSearchParams();
+    const { stationId, stationName, lat, lon } = useLocalSearchParams();
     const { user } = useAuth();
     const router = useRouter();
     const { colors } = useTheme();
     const styles = useMemo(() => getThemedStyles(colors), [colors]);
 
-    const [rating, setRating] = useState(0); 
+    const [rating, setRating] = useState(0);
     const [notes, setNotes] = useState('');
     const [loading, setLoading] = useState(false);
 
@@ -55,6 +55,62 @@ export default function SubmitCommentScreen() {
 
             const { error } = await supabase.from('price_reports').insert({ station_id: Number(stationId), user_id: user.id, fuel_type: 'PMS', price: null, rating: rating, notes: notes.trim() || null });
             if (error) throw error;
+
+            // Create notifications for users who have this station as favourite with notifications enabled
+            try {
+                const { data: favouriteUsers, error: favError } = await supabase
+                    .from('favourite_stations')
+                    .select('user_id')
+                    .eq('station_id', Number(stationId))
+                    .eq('notifications_enabled', true);
+
+                console.log('Favourite users for notifications:', favouriteUsers, 'Error:', favError);
+
+                if (favouriteUsers && favouriteUsers.length > 0) {
+                    const displayName = stationName || 'a station';
+                    const message = `New review at ${displayName}: ${rating} star${rating !== 1 ? 's' : ''}${notes ? ` - "${notes.substring(0, 50)}${notes.length > 50 ? '...' : ''}"` : ''}`;
+
+                    const notifications = favouriteUsers.map(fav => ({
+                        user_id: fav.user_id,
+                        station_id: Number(stationId),
+                        message: message,
+                        is_read: false,
+                    }));
+
+                    console.log('Creating notifications:', notifications);
+                    const { data: insertedNotifs, error: notifError } = await supabase
+                        .from('notifications')
+                        .insert(notifications)
+                        .select();
+
+                    if (notifError) {
+                        console.log('Notification insert error:', notifError);
+                    } else {
+                        console.log('Notifications created successfully!');
+
+                        // Send push notifications to each user
+                        if (insertedNotifs) {
+                            for (const notif of insertedNotifs) {
+                                try {
+                                    await supabase.functions.invoke('send-push-notification', {
+                                        body: {
+                                            notification_id: notif.id,
+                                            user_id: notif.user_id,
+                                            station_id: notif.station_id,
+                                            message: notif.message,
+                                        }
+                                    });
+                                } catch (pushErr) {
+                                    console.log('Push notification error:', pushErr);
+                                }
+                            }
+                        }
+                    }
+                }
+            } catch (notifError) {
+                console.log('Notification creation error:', notifError);
+            }
+
             Alert.alert("Review Posted!", "Thank you for sharing your experience!", [{ text: 'OK', onPress: () => router.back() }]);
         } catch (error: any) {
             Alert.alert("Submission Error", "Could not post your review. " + error.message);
@@ -65,7 +121,7 @@ export default function SubmitCommentScreen() {
 
     return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-            <Stack.Screen options={{ title: 'Post a Review', headerTintColor: colors.primary, headerStyle: { backgroundColor: colors.card }, headerTitleStyle: { color: colors.text } }}/>
+            <Stack.Screen options={{ title: 'Post a Review', headerTintColor: colors.primary, headerStyle: { backgroundColor: colors.card }, headerTitleStyle: { color: colors.text } }} />
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 <StarRatingDisplay rating={rating} colors={colors} />
                 <View style={styles.commentInputWrapper}>
@@ -85,17 +141,17 @@ export default function SubmitCommentScreen() {
                     </View>
                 </View>
                 <View style={styles.emojiSectionContainer}>
-                     <View style={styles.handleIndicator} />
+                    <View style={styles.handleIndicator} />
                     <Text style={styles.cardTitle}>How's your experience so far?</Text>
                     <Text style={styles.cardSubtitle}>We'd love to know!</Text>
                     <View style={styles.emojiContainer}>
                         {EMOJI_RATINGS.map((emoji, index) => {
-                             const isSelected = rating === index + 1;
+                            const isSelected = rating === index + 1;
                             return (<Pressable key={emoji} onPress={() => setRating(index + 1)}><Text style={[styles.emoji, isSelected && styles.emojiSelected]}>{emoji}</Text></Pressable>)
                         })}
                     </View>
                 </View>
-                <View style={{flex: 1}} />
+                <View style={{ flex: 1 }} />
                 <Pressable style={[styles.submitButton, loading && styles.buttonDisabled]} onPress={handleSubmit} disabled={loading}>
                     {loading ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.submitButtonText}>Post</Text>}
                 </Pressable>

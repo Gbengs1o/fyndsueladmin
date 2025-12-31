@@ -6,7 +6,7 @@ import React, { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 // *** THIS IS THE ONLY LINE THAT HAS CHANGED ***
-import StationIcon from '../../components/StationIcon'; 
+import StationIcon from '../../components/StationIcon';
 import { DbStation } from './home'; // Assuming home.ts is in the same directory
 
 type AppColors = ReturnType<typeof useTheme>['colors'];
@@ -26,8 +26,8 @@ const formatTimeAgo = (dateString?: string | null): string => {
 };
 
 const StationCard: React.FC<StationCardProps> = ({ station, onPress, isFavourite, onToggleFavourite, notificationsEnabled, onToggleNotification }) => {
-    const { colors } = useTheme();
-    const styles = useMemo(() => getThemedStyles(colors), [colors]);
+    const { colors, theme } = useTheme();
+    const styles = useMemo(() => getThemedStyles(colors, theme), [colors, theme]);
     const router = useRouter();
 
     const handleViewPress = (e: any) => { e.stopPropagation(); router.push(`/station/${station.id}`); };
@@ -49,7 +49,7 @@ const StationCard: React.FC<StationCardProps> = ({ station, onPress, isFavourite
                             </Pressable>
                         )}
                         {typeof onToggleNotification === 'function' && (
-                             <Pressable onPress={handleNotificationPress} style={styles.iconButton}>
+                            <Pressable onPress={handleNotificationPress} style={styles.iconButton}>
                                 <Ionicons name={notificationsEnabled ? 'notifications' : 'notifications-outline'} size={18} color={notificationsEnabled ? colors.primary : colors.textSecondary} />
                             </Pressable>
                         )}
@@ -77,24 +77,24 @@ const StationCard: React.FC<StationCardProps> = ({ station, onPress, isFavourite
     );
 };
 
-const getThemedStyles = (colors: AppColors) => StyleSheet.create({
-    cardContainer: { borderRadius: 10, borderWidth: 1, padding: 12, marginHorizontal: 16, marginBottom: 16, backgroundColor: colors.card, borderColor: colors.border },
-    topSection: { flexDirection: 'row', alignItems: 'flex-start' },
-    iconContainer: { width: 34, height: 34, borderRadius: 17, justifyContent: 'center', alignItems: 'center', marginRight: 12, marginTop: 5, backgroundColor: 'transparent' },
-    infoContainer: { flex: 1, marginRight: 8 },
-    stationName: { fontSize: 16, fontWeight: '600', color: colors.text },
-    ratingContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 4 },
-    iconButton: { marginRight: 8, padding: 2 },
-    ratingText: { fontSize: 14, marginLeft: 2, color: colors.text },
-    addressText: { fontSize: 12, lineHeight: 16, color: colors.textSecondary },
-    priceBox: { width: 90, height: 60, borderWidth: 1.5, borderRadius: 8, justifyContent: 'center', alignItems: 'center', padding: 5, borderColor: colors.primary },
-    priceText: { fontSize: 16, fontWeight: 'bold', color: colors.text },
-    lastUpdatedText: { fontSize: 10, marginTop: 2, color: colors.textSecondary },
-    separator: { height: 1, marginVertical: 10, backgroundColor: colors.border },
+const getThemedStyles = (colors: AppColors, theme: string) => StyleSheet.create({
+    cardContainer: { borderRadius: 12, borderWidth: 1, padding: 12, marginHorizontal: 16, marginBottom: 16, backgroundColor: colors.card, borderColor: colors.border },
+    topSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+    iconContainer: { width: 36, height: 36, borderRadius: 18, justifyContent: 'center', alignItems: 'center', marginRight: 12, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)' },
+    infoContainer: { flex: 1, marginRight: 10, justifyContent: 'center' },
+    stationName: { fontSize: 16, fontWeight: '700', color: colors.text, marginBottom: 4 },
+    ratingContainer: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', marginBottom: 4 },
+    iconButton: { marginRight: 8, padding: 4 },
+    ratingText: { fontSize: 13, marginLeft: 4, color: colors.textSecondary, fontWeight: '500' },
+    addressText: { fontSize: 12, lineHeight: 18, color: colors.textSecondary },
+    priceBox: { minWidth: 85, alignItems: 'center', paddingVertical: 6, paddingHorizontal: 8, borderRadius: 10, backgroundColor: theme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)', borderWidth: 1, borderColor: colors.border },
+    priceText: { fontSize: 16, fontWeight: '800', color: colors.text },
+    lastUpdatedText: { fontSize: 10, marginTop: 4, color: colors.textSecondary, fontWeight: '500' },
+    separator: { height: 1, marginVertical: 12, backgroundColor: colors.border, opacity: 0.5 },
     bottomSection: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
     distanceText: { fontSize: 12, fontWeight: '600', color: colors.primary },
-    viewButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 8, borderRadius: 6, backgroundColor: colors.primary },
-    viewButtonText: { fontSize: 14, fontWeight: '500', marginLeft: 6, color: colors.primaryText },
+    viewButton: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 8, backgroundColor: colors.primary },
+    viewButtonText: { fontSize: 13, fontWeight: '600', marginLeft: 6, color: '#fff' },
 });
 
 export default StationCard;

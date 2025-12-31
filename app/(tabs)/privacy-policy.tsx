@@ -1,6 +1,6 @@
 import { Ionicons } from '@expo/vector-icons';
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, Pressable, Linking } from 'react-native';
+import { Linking, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 
 type AppColors = ReturnType<typeof useTheme>['colors'];
@@ -27,28 +27,48 @@ export default function PrivacyPolicyScreen() {
             <Text style={styles.paragraph}>
                 If you choose to create an account to use features like saving 'Favourite Stations', we collect personal information, such as your user ID and email address, provided through our authentication provider (Supabase Auth).
             </Text>
-            
+
             <Text style={styles.subheading}>b) Location Data</Text>
             <Text style={styles.paragraph}>
                 This is the core of our service. We request and collect precise, real-time location information from your mobile device to provide location-based services, such as:
             </Text>
             <View style={styles.listItem}>
-               <Text style={styles.bullet}>•</Text>
-               <Text style={[styles.paragraph, { flex: 1 }]}>Finding and displaying nearby fuel stations on the map.</Text>
-            </View>
-             <View style={styles.listItem}>
-               <Text style={styles.bullet}>•</Text>
-               <Text style={[styles.paragraph, { flex: 1 }]}>Calculating the distance to each station.</Text>
+                <Text style={styles.bullet}>•</Text>
+                <Text style={[styles.paragraph, { flex: 1 }]}>Finding and displaying nearby fuel stations on the map.</Text>
             </View>
             <View style={styles.listItem}>
-               <Text style={styles.bullet}>•</Text>
-               <Text style={[styles.paragraph, { flex: 1 }]}>Powering features to find stations in your current area.</Text>
+                <Text style={styles.bullet}>•</Text>
+                <Text style={[styles.paragraph, { flex: 1 }]}>Calculating the distance to each station.</Text>
+            </View>
+            <View style={styles.listItem}>
+                <Text style={styles.bullet}>•</Text>
+                <Text style={[styles.paragraph, { flex: 1 }]}>Powering features to find stations in your current area.</Text>
             </View>
             <Text style={styles.paragraph}>
                 You can change location access at any time in your device's settings. However, disabling location services will render the core features of the App unusable.
             </Text>
 
-            <Text style={styles.subheading}>c) Usage Data</Text>
+            <Text style={styles.subheading}>c) Camera and Photo Library Access</Text>
+            <Text style={styles.paragraph}>
+                We request access to your device's camera and photo library to allow you to:
+            </Text>
+            <View style={styles.listItem}>
+                <Text style={styles.bullet}>•</Text>
+                <Text style={[styles.paragraph, { flex: 1 }]}>Take photos of fuel stations to accompany your suggestions or reports.</Text>
+            </View>
+            <View style={styles.listItem}>
+                <Text style={styles.bullet}>•</Text>
+                <Text style={[styles.paragraph, { flex: 1 }]}>Upload existing photos from your gallery for station submissions.</Text>
+            </View>
+            <View style={styles.listItem}>
+                <Text style={styles.bullet}>•</Text>
+                <Text style={[styles.paragraph, { flex: 1 }]}>Update your profile picture.</Text>
+            </View>
+            <Text style={styles.paragraph}>
+                We only access your camera or photos when you explicitly choose to perform these actions. The uploaded images are stored on our secure servers (Supabase Storage).
+            </Text>
+
+            <Text style={styles.subheading}>d) Usage Data</Text>
             <Text style={styles.paragraph}>
                 We collect information about your activity in the App, specifically which fuel stations you mark as 'Favourite' and the price reports you submit. This helps personalize your experience and contributes to our community data.
             </Text>
@@ -77,13 +97,13 @@ export default function PrivacyPolicyScreen() {
             <View style={styles.listItem}>
                 <Text style={styles.bullet}>•</Text>
                 <Text style={[styles.paragraph, { flex: 1 }]}>
-                    <Text style={{fontWeight: 'bold'}}>With Service Providers.</Text> We share data with our backend service provider, Supabase, which hosts our database, authentication, and serverless functions.
+                    <Text style={{ fontWeight: 'bold' }}>With Service Providers.</Text> We share data with our backend service provider, Supabase, which hosts our database, authentication, and serverless functions.
                 </Text>
             </View>
-             <View style={styles.listItem}>
+            <View style={styles.listItem}>
                 <Text style={styles.bullet}>•</Text>
                 <Text style={[styles.paragraph, { flex: 1 }]}>
-                    <Text style={{fontWeight: 'bold'}}>For Data Enrichment.</Text> Your location coordinates are used to query third-party APIs like Google's to find station data. Your personal user information is not sent in this request.
+                    <Text style={{ fontWeight: 'bold' }}>For Data Enrichment.</Text> Your location coordinates are used to query third-party APIs like Google's to find station data. Your personal user information is not sent in this request.
                 </Text>
             </View>
 
@@ -96,7 +116,7 @@ export default function PrivacyPolicyScreen() {
             <Text style={styles.paragraph}>
                 If you have questions or comments about this Privacy Policy, please reach out to us using the contact details below:
             </Text>
-            
+
             {/* Email Contact Action */}
             <Pressable style={styles.contactRow} onPress={() => Linking.openURL('mailto:Hello@smahile.com')}>
                 <Ionicons name="mail" size={20} color={colors.textSecondary} />

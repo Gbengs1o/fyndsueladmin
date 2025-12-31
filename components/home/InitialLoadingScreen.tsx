@@ -1,35 +1,33 @@
-import React, { useMemo } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
-import { useTheme } from '../../context/ThemeContext';
+// File: components/home/InitialLoadingScreen.tsx
+// Premium loading screen with animated fuel pump
 
-type AppColors = ReturnType<typeof useTheme>['colors'];
+import React from 'react';
+import { StyleSheet, View } from 'react-native';
+import { useTheme } from '../../context/ThemeContext';
+import LoadingAnimation from '../LoadingAnimation';
 
 interface InitialLoadingScreenProps {
-    message: string;
+    message?: string;
 }
 
-export default function InitialLoadingScreen({ message }: InitialLoadingScreenProps) {
+export default function InitialLoadingScreen({ message = 'Loading...' }: InitialLoadingScreenProps) {
     const { colors } = useTheme();
-    const styles = useMemo(() => getThemedStyles(colors), [colors]);
 
     return (
-        <View style={styles.loadingOverlay}>
-            <ActivityIndicator size="large" color={colors.primary} />
-            <Text style={styles.loadingText}>{message}</Text>
+        <View style={[styles.loadingOverlay, { backgroundColor: colors.background }]}>
+            <LoadingAnimation
+                message={message}
+                size="large"
+                variant="fullscreen"
+            />
         </View>
     );
 }
 
-const getThemedStyles = (colors: AppColors) => StyleSheet.create({
+const styles = StyleSheet.create({
     loadingOverlay: {
         ...StyleSheet.absoluteFillObject,
-        backgroundColor: colors.background,
         justifyContent: 'center',
         alignItems: 'center',
-        gap: 10,
-    },
-    loadingText: {
-        fontSize: 16,
-        color: colors.text,
     },
 });

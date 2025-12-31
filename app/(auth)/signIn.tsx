@@ -1,7 +1,7 @@
 import { Ionicons } from '@expo/vector-icons';
 import { Link, useRouter } from 'expo-router';
-import React, { useState, useMemo } from 'react';
-import { StyleSheet, Text, TextInput, Pressable, View, SafeAreaView, KeyboardAvoidingView, ScrollView, Platform, Alert, ActivityIndicator } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, KeyboardAvoidingView, Platform, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
 
@@ -22,7 +22,7 @@ export default function SignInScreen() {
         try {
             const { error } = await supabase.auth.signInWithPassword({ email, password });
             if (error) throw error;
-            router.replace('/(tabs)/home');
+            // router.replace('/(tabs)/home'); // Handled by RootLayout
         } catch (error: any) {
             Alert.alert('Sign In Failed', error.message || 'An unexpected error occurred.');
         } finally {
@@ -50,9 +50,6 @@ export default function SignInScreen() {
                     <Pressable style={({ pressed }) => [styles.button, { opacity: pressed || isLoading ? 0.8 : 1 }]} onPress={handleSignIn} disabled={isLoading}>
                         {isLoading ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Sign In</Text>}
                     </Pressable>
-                    <View style={styles.separatorContainer}>
-                        <View style={styles.separatorLine} /><Text style={styles.separatorText}>or</Text><View style={styles.separatorLine} />
-                    </View>
                     <Text style={styles.footerText}>
                         Don’t have an account?{' '}
                         <Link href="/(auth)/signup" asChild>

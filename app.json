@@ -2,8 +2,8 @@
   "expo": {
     "name": "FYND FUEL",
     "slug": "fynd-fuel",
-    "owner": "dovekings",
-    "version": "1.0.0",
+    "owner": "smahile-hub",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "fyndfuel",
@@ -15,18 +15,20 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.yourname.fyndfuel"
+      "bundleIdentifier": "com.smahilehub.fyndfuel"
     },
     "android": {
+      "versionCode": 12,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FFFFFF"
       },
-      "package": "com.yourname.fyndfuel",
+      "package": "com.smahilehub.fyndfuel",
       "googleServicesFile": "./google-services.json",
       "permissions": [
         "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION"
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
       ],
       "config": {
         "googleMaps": {
@@ -48,6 +50,21 @@
         }
       ],
       "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow FYND FUEL to access your photos to upload station images and profile pictures.",
+          "cameraPermission": "Allow FYND FUEL to use your camera to take photos of fuel stations."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "targetSdkVersion": 35
+          }
+        }
+      ],
       "@react-native-google-signin/google-signin",
       "expo-notifications"
     ],
@@ -59,7 +76,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "e4ea8005-22d2-44d4-91b6-3ec9535b7a72"
+        "projectId": "482ca0d2-c701-48fb-bdc1-9f53ff88aaeb"
       }
     }
   }

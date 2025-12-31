@@ -1,6 +1,6 @@
 import { Link, useRouter } from 'expo-router';
-import React, { useState, useMemo } from 'react';
-import { Alert, StyleSheet, View, Text, Pressable, ActivityIndicator, TextInput, SafeAreaView, ScrollView } from 'react-native';
+import React, { useMemo, useState } from 'react';
+import { ActivityIndicator, Alert, Pressable, SafeAreaView, ScrollView, StyleSheet, Text, TextInput } from 'react-native';
 import PhoneInput from 'react-native-phone-number-input';
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
@@ -68,8 +68,8 @@ export default function SignUpScreen() {
                 <Pressable style={[styles.button, loading && styles.buttonDisabled]} onPress={handleSignUp} disabled={loading}>
                     {loading ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.buttonText}>Sign Up</Text>}
                 </Pressable>
-                {/* This Link also needs to be corrected to match the file name */}
-                <Link href="/signIn" asChild> 
+
+                <Link href="/signIn" asChild>
                     <Pressable>
                         <Text style={styles.footerText}>Already have an account? <Text style={styles.linkTextBold}>Sign in</Text></Text>
                     </Pressable>
@@ -90,6 +90,9 @@ const getThemedStyles = (colors: AppColors) => StyleSheet.create({
     buttonText: { color: colors.primaryText, fontSize: 16, fontWeight: '500' },
     footerText: { textAlign: 'center', marginTop: 20, fontSize: 16, color: colors.textSecondary },
     linkTextBold: { color: colors.primary, fontWeight: 'bold' },
+    separatorContainer: { flexDirection: 'row', alignItems: 'center', marginVertical: 30 },
+    separatorLine: { flex: 1, height: 1, backgroundColor: colors.border },
+    separatorText: { marginHorizontal: 10, fontSize: 16, color: colors.textSecondary },
 });
 
 // These styles are passed directly to the PhoneInputComponent and don't need to be in the dynamic hook

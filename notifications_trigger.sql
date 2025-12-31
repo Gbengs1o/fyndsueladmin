@@ -25,6 +25,18 @@ CREATE POLICY "Users can view own notifications" ON notifications
   FOR SELECT TO authenticated
   USING (auth.uid() = user_id);
 
+-- Policy: Authenticated users can insert notifications
+DROP POLICY IF EXISTS "Users can insert notifications" ON notifications;
+CREATE POLICY "Users can insert notifications" ON notifications
+  FOR INSERT TO authenticated
+  WITH CHECK (true);
+
+-- Policy: Users can update their own notifications (mark as read)
+DROP POLICY IF EXISTS "Users can update own notifications" ON notifications;
+CREATE POLICY "Users can update own notifications" ON notifications
+  FOR UPDATE TO authenticated
+  USING (auth.uid() = user_id);
+
 -- Function to handle new price reports / reviews
 CREATE OR REPLACE FUNCTION handle_new_price_report()
 RETURNS TRIGGER
@@ -69,3 +81,39 @@ CREATE TRIGGER on_price_report_insert
 AFTER INSERT ON price_reports
 FOR EACH ROW
 EXECUTE FUNCTION handle_new_price_report();
+
+-- Function to handle station flagging and notify favourite users
+CREATE OR REPLACE FUNCTION handle_station_flagged()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  station_name TEXT;
+  notif_message TEXT;
+BEGIN
+  -- Get station name
+  SELECT name INTO station_name FROM stations WHERE id = NEW.station_id;
+  
+  notif_message := 'Alert: ' || COALESCE(station_name, 'A station you follow') || ' has been flagged as potentially not existing';
+
+  -- Insert notifications for all users who favorited this station
+  INSERT INTO notifications (user_id, station_id, message)
+  SELECT fs.user_id, NEW.station_id, notif_message
+  FROM favourite_stations fs
+  JOIN profiles p ON fs.user_id = p.id
+  WHERE fs.station_id = NEW.station_id
+    AND fs.notifications_enabled = true
+    AND fs.user_id != NEW.user_id  -- Don't notify the user who flagged it
+    AND (p.push_notifications_enabled IS TRUE OR p.push_notifications_enabled IS NULL);
+
+  RETURN NEW;
+END;
+$$;
+
+-- Create the trigger for flagged stations
+DROP TRIGGER IF EXISTS on_station_flagged ON flagged_stations;
+CREATE TRIGGER on_station_flagged
+AFTER INSERT ON flagged_stations
+FOR EACH ROW
+EXECUTE FUNCTION handle_station_flagged();

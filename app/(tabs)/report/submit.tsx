@@ -12,13 +12,13 @@ import { supabase } from '../../../lib/supabase';
 
 type AppColors = ReturnType<typeof useTheme>['colors'];
 
-const AMENITIES = [ "Supermarket", "Restaurant", "Membership required", "Car wash", "ATM", "Cash discount", "POS Machine", "Air Pump", "Restrooms", "Oil", "Full service", "Car Repairs", "Open 24/7", "Power" ];
+const AMENITIES = ["Supermarket", "Restaurant", "Membership required", "Car wash", "ATM", "Cash discount", "POS Machine", "Air Pump", "Restrooms", "Oil", "Full service", "Car Repairs", "Open 24/7", "Power"];
 const PAYMENT_METHODS = ["Cash", "Transfer", "POS"];
 const ALL_PRODUCTS = ["Petrol", "Diesel", "Kerosine", "Gas"];
 
 const amenityIcons: { [key: string]: React.ComponentProps<typeof FontAwesome>['name'] | React.ComponentProps<typeof MaterialCommunityIcons>['name'] } = { "Supermarket": 'shopping-cart', "Restaurant": 'cutlery', "Membership required": 'id-card-o', "Car wash": 'car', "ATM": 'money', "Cash discount": 'tag', "POS Machine": 'credit-card', "Air Pump": 'cog', "Restrooms": 'female', "Oil": 'tint', "Full service": 'user-plus', "Car Repairs": 'wrench', "Open 24/7": 'clock-o', "Power": 'bolt' };
 
-function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number { const R = 6371e3; const p1 = lat1 * Math.PI/180; const p2 = lat2 * Math.PI/180; const dp = (lat2-lat1) * Math.PI/180; const dl = (lon2-lon1) * Math.PI/180; const a = Math.sin(dp/2) * Math.sin(dp/2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl/2) * Math.sin(dl/2); const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a)); return R * c; }
+function haversineDistance(lat1: number, lon1: number, lat2: number, lon2: number): number { const R = 6371e3; const p1 = lat1 * Math.PI / 180; const p2 = lat2 * Math.PI / 180; const dp = (lat2 - lat1) * Math.PI / 180; const dl = (lon2 - lon1) * Math.PI / 180; const a = Math.sin(dp / 2) * Math.sin(dp / 2) + Math.cos(p1) * Math.cos(p2) * Math.sin(dl / 2) * Math.sin(dl / 2); const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)); return R * c; }
 
 export default function SubmitReportScreen() {
     const { stationId, stationName, lat, lon } = useLocalSearchParams();
@@ -48,13 +48,84 @@ export default function SubmitReportScreen() {
             const userLocation = await Location.getCurrentPositionAsync({});
             const distance = haversineDistance(userLocation.coords.latitude, userLocation.coords.longitude, parseFloat(lat as string), parseFloat(lon as string));
             if (distance > 200) { Alert.alert("Too Far Away", `You must be within 200 meters to submit a report. You are currently ~${Math.round(distance)}m away.`); setLoading(false); return; }
-            
+
             const pmsPrice = prices['Petrol'] ? parseFloat(prices['Petrol']) : null;
             const otherFuelPricesData: { [key: string]: number } = {};
             for (const [fuel, priceStr] of Object.entries(prices)) { if (fuel !== 'Petrol' && priceStr && !isNaN(parseFloat(priceStr))) { otherFuelPricesData[fuel] = parseFloat(priceStr); } }
 
             const { error } = await supabase.from('price_reports').insert({ station_id: Number(stationId), user_id: user.id, fuel_type: 'PMS', price: pmsPrice, other_fuel_prices: Object.keys(otherFuelPricesData).length > 0 ? otherFuelPricesData : null, amenities_update: { add: Array.from(selectedAmenities) }, payment_methods_update: { add: Array.from(selectedPaymentMethods) } });
             if (error) throw error;
+
+            // Create notifications for users who have this station as favourite with notifications enabled
+            try {
+                console.log('=== NOTIFICATION DEBUG ===');
+                console.log('Station ID:', stationId, 'Station Name:', stationName);
+
+                const { data: favouriteUsers, error: favError } = await supabase
+                    .from('favourite_stations')
+                    .select('user_id')
+                    .eq('station_id', Number(stationId))
+                    .eq('notifications_enabled', true);
+
+                console.log('Favourite users query result:', favouriteUsers);
+                console.log('Favourite users query error:', favError);
+
+                if (favouriteUsers && favouriteUsers.length > 0) {
+                    // Build notification message
+                    let message = `New update at ${stationName}`;
+                    if (pmsPrice) {
+                        message = `Price update at ${stationName}: Petrol now ₦${pmsPrice.toFixed(0)}/L`;
+                    } else if (hasAmenity) {
+                        message = `Amenity update at ${stationName}`;
+                    } else if (hasPayment) {
+                        message = `Payment method update at ${stationName}`;
+                    }
+
+                    // Insert notifications for all subscribed users
+                    const notifications = favouriteUsers.map(fav => ({
+                        user_id: fav.user_id,
+                        station_id: Number(stationId),
+                        message: message,
+                        is_read: false,
+                    }));
+
+                    console.log('Inserting notifications:', JSON.stringify(notifications));
+                    const { data: insertedNotifs, error: insertError } = await supabase
+                        .from('notifications')
+                        .insert(notifications)
+                        .select();
+
+                    if (insertError) {
+                        console.log('Notification INSERT ERROR:', insertError);
+                    } else {
+                        console.log('Notifications inserted successfully!');
+
+                        // Send push notifications to each user
+                        if (insertedNotifs) {
+                            for (const notif of insertedNotifs) {
+                                try {
+                                    await supabase.functions.invoke('send-push-notification', {
+                                        body: {
+                                            notification_id: notif.id,
+                                            user_id: notif.user_id,
+                                            station_id: notif.station_id,
+                                            message: notif.message,
+                                        }
+                                    });
+                                } catch (pushErr) {
+                                    console.log('Push notification error:', pushErr);
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    console.log('No users with notifications enabled for this station');
+                }
+            } catch (notifError) {
+                // Don't fail the whole submission if notification creation fails
+                console.log('Notification creation EXCEPTION:', notifError);
+            }
+
             Alert.alert("Report Submitted!", "Thank you for helping keep our data accurate!", [{ text: 'OK', onPress: () => router.back() }]);
         } catch (error: any) {
             Alert.alert("Submission Error", error.message);
@@ -65,7 +136,7 @@ export default function SubmitReportScreen() {
 
     return (
         <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={styles.container}>
-            <Stack.Screen options={{ title: 'Submit an Update', headerTintColor: colors.primary, headerStyle: { backgroundColor: colors.card }, headerTitleStyle: { color: colors.text } }}/>
+            <Stack.Screen options={{ title: 'Submit an Update', headerTintColor: colors.primary, headerStyle: { backgroundColor: colors.card }, headerTitleStyle: { color: colors.text } }} />
             <ScrollView contentContainerStyle={styles.scrollContainer} keyboardShouldPersistTaps="handled">
                 <View style={styles.header}><Text style={styles.title}>Updating prices for</Text><Text style={styles.stationName}>{stationName}</Text></View>
                 <View style={styles.priceCardContainer}>
@@ -78,7 +149,7 @@ export default function SubmitReportScreen() {
                                 <Text style={styles.fuelLabel}>{product}</Text>
                                 <View style={[styles.priceInputWrapper, isFocused && styles.priceInputWrapperFocused]}>
                                     <Text style={styles.currencySymbol}>₦</Text>
-                                    <TextInput style={styles.priceInput} placeholder="0" placeholderTextColor={colors.placeholder} keyboardType="numeric" value={prices[product] || ''} onChangeText={(text) => handlePriceChange(product, text)} onFocus={() => setFocusedInput(product)} onBlur={() => setFocusedInput(null)}/>
+                                    <TextInput style={styles.priceInput} placeholder="0" placeholderTextColor={colors.placeholder} keyboardType="numeric" value={prices[product] || ''} onChangeText={(text) => handlePriceChange(product, text)} onFocus={() => setFocusedInput(product)} onBlur={() => setFocusedInput(null)} />
                                     <Text style={styles.unitLabel}>/{unit}</Text>
                                 </View>
                             </View>
@@ -101,14 +172,14 @@ export default function SubmitReportScreen() {
                     </View>
                     <View style={styles.divider} />
                     <View style={styles.section}>
-                         <Text style={styles.sectionTitle}>Amenities</Text>
-                         <View style={styles.amenityGridContainer}>
+                        <Text style={styles.sectionTitle}>Amenities</Text>
+                        <View style={styles.amenityGridContainer}>
                             {AMENITIES.map((item) => {
                                 const isSelected = selectedAmenities.has(item);
                                 const iconName = amenityIcons[item] || 'question-circle';
-                                return(<Pressable key={item} style={styles.amenityItem} onPress={() => handleSelect(item, true)}><View style={[styles.amenityIconContainer, isSelected && styles.amenityIconContainerSelected]}><FontAwesome name={iconName as any} size={24} color={isSelected ? colors.primaryText : colors.text} /></View><Text style={styles.amenityText}>{item}</Text></Pressable>);
+                                return (<Pressable key={item} style={styles.amenityItem} onPress={() => handleSelect(item, true)}><View style={[styles.amenityIconContainer, isSelected && styles.amenityIconContainerSelected]}><FontAwesome name={iconName as any} size={24} color={isSelected ? colors.primaryText : colors.text} /></View><Text style={styles.amenityText}>{item}</Text></Pressable>);
                             })}
-                         </View>
+                        </View>
                     </View>
                 </View>
                 <Pressable style={[styles.submitButton, loading && styles.buttonDisabled]} onPress={handleSubmit} disabled={loading}>

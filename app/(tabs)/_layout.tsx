@@ -18,24 +18,25 @@ export default function TabLayout() {
       <Tabs.Screen name="home" />
       <Tabs.Screen name="favourite" />
       <Tabs.Screen name="search" />
-      <Tabs.Screen name="rewards" />
+      {/* rewards.tsx is missing, so we remove this tab */}
+      {/* <Tabs.Screen name="rewards" /> */}
       <Tabs.Screen name="settings" />
 
       {/* This screen is for the station detail page */}
-      <Tabs.Screen 
-        name="station/[id]" 
-        options={{ href: null }} 
+      <Tabs.Screen
+        name="station/[id]"
+        options={{ href: null }}
       />
 
       {/* --- THIS IS THE CORRECTED CODE --- */}
       {/* Remove the ../ because the files are now direct children */}
-      <Tabs.Screen 
-        name="report/submit" 
-        options={{ href: null }} 
+      <Tabs.Screen
+        name="report/submit"
+        options={{ href: null }}
       />
-      <Tabs.Screen 
-        name="report/reportchat" 
-        options={{ href: null }} 
+      <Tabs.Screen
+        name="report/reportchat"
+        options={{ href: null }}
       />
     </Tabs>
   );

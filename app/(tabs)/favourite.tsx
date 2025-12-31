@@ -2,20 +2,21 @@
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { useRouter } from 'expo-router';
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, FlatList, TextInput, ActivityIndicator, Alert, TouchableOpacity, Image } from 'react-native';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Alert, FlatList, Image, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import LoadingAnimation from '../../components/LoadingAnimation';
+import StationIcon from '../../components/StationIcon'; // Assumes StationIcon.tsx is in components/
 import { useAuth } from '../../context/AuthContext';
 import { useTheme } from '../../context/ThemeContext';
 import { supabase } from '../../lib/supabase';
-import StationIcon from '../../components/StationIcon'; // Assumes StationIcon.tsx is in components/
 import { DbStation } from './home';
 
 type AppColors = ReturnType<typeof useTheme>['colors'];
 interface FavouriteStationData extends DbStation {
-  notifications_enabled: boolean;
-  latest_pms_price: number | null;
-  last_updated_at: string | null;
+    notifications_enabled: boolean;
+    latest_pms_price: number | null;
+    last_updated_at: string | null;
 }
 
 const formatTimeAgo = (dateString: string | null): string => {
@@ -35,101 +36,173 @@ const formatTimeAgo = (dateString: string | null): string => {
     return "Just now";
 };
 
+import AdvertCard, { Advert } from '../../components/AdvertCard'; // Added AdvertCard
+
+// ... imports
+
 export default function FavouriteScreen() {
     const { colors } = useTheme();
     const styles = useMemo(() => getThemedStyles(colors), [colors]);
     const { user } = useAuth();
     const isFocused = useIsFocused();
     const legacyNavigation = useNavigation();
-    const router = useRouter(); 
+    const router = useRouter();
     const [isLoading, setIsLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [allFavourites, setAllFavourites] = useState<FavouriteStationData[]>([]);
+    const [adverts, setAdverts] = useState<Advert[]>([]); // Ad state
 
     const fetchFavourites = useCallback(async () => {
         if (!user) { setAllFavourites([]); setIsLoading(false); return; }
         setIsLoading(true);
         const { data, error } = await supabase.rpc('get_favourite_stations_for_app', { p_user_id: user.id });
-        if (error) Alert.alert('Error Fetching Favourites', error.message);
+        if (error) Alert.alert('Error Loading Tracked Stations', error.message);
         else if (data) setAllFavourites(data as FavouriteStationData[]);
         setIsLoading(false);
     }, [user]);
 
+    // Fetch ads independently
+    useEffect(() => {
+        const fetchAdverts = async () => {
+            try {
+                // Check Global Kill Switch
+                const { data: settingsData } = await supabase.from('app_settings').select('value').eq('key', 'global_ads_enabled').single();
+                if (settingsData && settingsData.value === false) {
+                    setAdverts([]);
+                    return;
+                }
+
+                const { data } = await supabase
+                    .from('adverts')
+                    .select('*')
+                    .eq('is_active', true)
+                    .in('type', ['card', 'video', 'banner']) // Allow video and images
+                    .limit(2); // Fetch a couple
+
+                if (data) {
+                    const validAdverts = data.map(ad => ({
+                        ...ad,
+                        type: (['banner', 'card', 'native', 'video'].includes(ad.type) ? ad.type : 'card') as 'banner' | 'card' | 'native' | 'video'
+                    }));
+                    setAdverts(validAdverts);
+                }
+            } catch (err) {
+                console.error("Error fetching ads for favourites:", err);
+            }
+        };
+
+        if (isFocused) {
+            fetchAdverts();
+        }
+    }, [isFocused]);
+
     const handleRemoveFavourite = (stationIdToRemove: number) => {
-        Alert.alert("Remove Favourite", "Are you sure you want to remove this station?",
-            [{ text: "Cancel", style: "cancel" }, { text: "Remove",
+        Alert.alert("Stop Tracking", "Are you sure you want to stop tracking this station?",
+            [{ text: "Cancel", style: "cancel" }, {
+                text: "Remove",
                 onPress: async () => {
                     if (!user) return;
                     setAllFavourites(current => current.filter(fav => fav.id !== stationIdToRemove));
                     const { error } = await supabase.from('favourite_stations').delete().match({ user_id: user.id, station_id: stationIdToRemove });
-                    if (error) { Alert.alert('Error', 'Could not remove favourite.'); fetchFavourites(); }
-                }, style: "destructive" }]
+                    if (error) { Alert.alert('Error', 'Could not stop tracking.'); fetchFavourites(); }
+                }, style: "destructive"
+            }]
         );
     };
-    
+
     const handleToggleNotification = async (favourite: FavouriteStationData) => {
         const newStatus = !favourite.notifications_enabled;
         setAllFavourites(current => current.map(fav => fav.id === favourite.id ? { ...fav, notifications_enabled: newStatus } : fav));
         const { error } = await supabase.from('favourite_stations').update({ notifications_enabled: newStatus }).match({ user_id: user!.id, station_id: favourite.id });
         if (error) { Alert.alert('Error', 'Could not update notification preference.'); fetchFavourites(); }
     };
-    
+
     const handleCardPress = (stationId: number) => {
         router.push(`/station/${stationId}`);
     };
 
     useEffect(() => { if (isFocused) fetchFavourites(); }, [isFocused, user, fetchFavourites]);
 
-    const filteredFavourites = useMemo(() => {
-        if (!searchTerm.trim()) return allFavourites;
-        return allFavourites.filter(fav => fav.name.toLowerCase().includes(searchTerm.toLowerCase()));
-    }, [searchTerm, allFavourites]);
+    const filteredData = useMemo(() => {
+        let data: (FavouriteStationData | Advert)[] = [...allFavourites];
+        if (searchTerm.trim()) {
+            data = data.filter(item => 'name' in item && item.name.toLowerCase().includes(searchTerm.toLowerCase()));
+        }
 
-    const renderFavouriteCard = ({ item }: { item: FavouriteStationData }) => (
-        <TouchableOpacity onPress={() => handleCardPress(item.id)} activeOpacity={0.7}>
-            <View style={styles.cardContainer}>
-                <View style={styles.logoContainer}>
-                    {item.logo_url ? ( 
-                        <Image source={{ uri: item.logo_url }} style={styles.logoImage} resizeMode="contain" /> 
-                    ) : ( 
-                        <StationIcon color={colors.primary} width={24} height={24} /> 
-                    )}
+        // Inject Ads
+        if (adverts.length > 0 && data.length > 0) {
+            // Inject first ad after 2nd item
+            if (data.length >= 2 && adverts[0]) {
+                data.splice(2, 0, adverts[0]);
+            } else if (adverts[0]) {
+                data.push(adverts[0]);
+            }
+
+            // Inject second ad after 5th item (if list is long enough)
+            if (data.length >= 6 && adverts[1]) {
+                data.splice(6, 0, adverts[1]);
+            }
+        }
+        return data;
+    }, [searchTerm, allFavourites, adverts]);
+
+    const renderItem = ({ item }: { item: FavouriteStationData | Advert }) => {
+        // Check if it's an ad
+        if ('type' in item && (item.type === 'banner' || item.type === 'card' || item.type === 'video')) {
+            return (
+                <View style={{ marginBottom: 16 }}>
+                    <AdvertCard advert={item as Advert} />
                 </View>
-                <View style={styles.infoContainer}>
-                    <Text style={styles.stationName} numberOfLines={1}>{item.name}</Text>
-                    <View style={styles.ratingContainer}>
-                        <FontAwesome name="star" size={16} color={colors.accent} />
-                        <Text style={styles.ratingText}>{item.rating?.toFixed(1) ?? 'N/A'} ({item.review_count ?? 0} reviews)</Text>
+            );
+        }
+
+        const favourite = item as FavouriteStationData;
+        return (
+            <TouchableOpacity onPress={() => handleCardPress(favourite.id)} activeOpacity={0.7}>
+                <View style={styles.cardContainer}>
+                    <View style={styles.logoContainer}>
+                        {favourite.logo_url ? (
+                            <Image source={{ uri: favourite.logo_url }} style={styles.logoImage} resizeMode="contain" />
+                        ) : (
+                            <StationIcon color={colors.primary} width={24} height={24} />
+                        )}
                     </View>
-                    <Text style={styles.addressText} numberOfLines={2}>{item.address}</Text>
+                    <View style={styles.infoContainer}>
+                        <Text style={styles.stationName} numberOfLines={1}>{favourite.name}</Text>
+                        <View style={styles.ratingContainer}>
+                            <FontAwesome name="star" size={16} color={colors.accent} />
+                            <Text style={styles.ratingText}>{favourite.rating?.toFixed(1) ?? 'N/A'} ({favourite.review_count ?? 0} reviews)</Text>
+                        </View>
+                        <Text style={styles.addressText} numberOfLines={2}>{favourite.address}</Text>
+                    </View>
+                    <View style={styles.priceBox}>
+                        <Text style={styles.priceText}>N {favourite.latest_pms_price?.toFixed(0) || '---'}/L</Text>
+                        <Text style={styles.updateText}>{formatTimeAgo(favourite.last_updated_at)}</Text>
+                    </View>
+                    <View style={styles.actionsContainer}>
+                        <TouchableOpacity onPress={() => handleToggleNotification(favourite)} style={styles.actionButton}><Ionicons name={favourite.notifications_enabled ? "notifications" : "notifications-outline"} size={22} color={favourite.notifications_enabled ? colors.primary : colors.textSecondary} /></TouchableOpacity>
+                        <TouchableOpacity onPress={() => handleRemoveFavourite(favourite.id)} style={styles.actionButton}><View style={styles.removeIconCircle}><FontAwesome name="minus" size={12} color="#FFFFFF" /></View></TouchableOpacity>
+                    </View>
                 </View>
-                <View style={styles.priceBox}>
-                    <Text style={styles.priceText}>N {item.latest_pms_price?.toFixed(0) || '---'}/L</Text>
-                    <Text style={styles.updateText}>{formatTimeAgo(item.last_updated_at)}</Text>
-                </View>
-                <View style={styles.actionsContainer}>
-                    <TouchableOpacity onPress={() => handleToggleNotification(item)} style={styles.actionButton}><Ionicons name={item.notifications_enabled ? "notifications" : "notifications-outline"} size={22} color={item.notifications_enabled ? colors.primary : colors.textSecondary} /></TouchableOpacity>
-                    <TouchableOpacity onPress={() => handleRemoveFavourite(item.id)} style={styles.actionButton}><View style={styles.removeIconCircle}><FontAwesome name="minus" size={12} color="#FFFFFF" /></View></TouchableOpacity>
-                </View>
-            </View>
-        </TouchableOpacity>
-    );
+            </TouchableOpacity>
+        );
+    };
 
     return (
         <SafeAreaView style={styles.safeArea}>
             <View style={styles.container}>
                 <View style={styles.headerContainer}>
                     <TouchableOpacity style={styles.headerLeft} onPress={() => legacyNavigation.goBack()}><Ionicons name="chevron-back" size={24} color={colors.text} /><Text style={styles.backButtonText}>Back</Text></TouchableOpacity>
-                    <View style={styles.headerCenter}><Text style={styles.headerTitle}>Favourite</Text></View>
+                    <View style={styles.headerCenter}><Text style={styles.headerTitle}>Track Activities</Text></View>
                     <View style={styles.headerRight} />
                 </View>
-                <TextInput style={styles.searchInput} placeholder="Search in your favourites..." placeholderTextColor={colors.textSecondary} value={searchTerm} onChangeText={setSearchTerm}/>
-                {isLoading ? ( <ActivityIndicator size="large" color={colors.primary} style={{ flex: 1 }}/> ) : (
+                <TextInput style={styles.searchInput} placeholder="Search tracked stations..." placeholderTextColor={colors.textSecondary} value={searchTerm} onChangeText={setSearchTerm} />
+                {isLoading ? (<LoadingAnimation message="Loading tracked stations..." size="medium" />) : (
                     <FlatList
-                        data={filteredFavourites} renderItem={renderFavouriteCard} keyExtractor={(item) => item.id.toString()}
+                        data={filteredData} renderItem={renderItem} keyExtractor={(item) => 'id' in item ? item.id.toString() : Math.random().toString()}
                         style={styles.list} contentContainerStyle={styles.listContentContainer}
                         ItemSeparatorComponent={() => <View style={{ height: 16 }} />}
-                        ListEmptyComponent={ <View style={styles.emptyContainer}><Text style={styles.emptyText}>{allFavourites.length === 0 ? "You haven't added any favourite stations yet." : "No favourites match your search."}</Text></View> }
+                        ListEmptyComponent={<View style={styles.emptyContainer}><Text style={styles.emptyText}>{allFavourites.length === 0 ? "You aren't tracking any stations yet.\n\nTap the 📍 button on any station to start tracking its activity." : "No tracked stations match your search."}</Text></View>}
                     />
                 )}
             </View>
@@ -152,16 +225,16 @@ const getThemedStyles = (colors: AppColors) => StyleSheet.create({
     listContentContainer: { paddingHorizontal: 16, paddingBottom: 100 },
     cardContainer: { height: 92, borderRadius: 10, flexDirection: 'row', alignItems: 'center', paddingLeft: 10, paddingRight: 5, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.08, shadowRadius: 4, elevation: 3, backgroundColor: colors.card, shadowColor: colors.shadow },
     // *** THE ONLY CHANGE IS HERE ***
-    logoContainer: { 
-        width: 34, 
-        height: 34, 
-        borderRadius: 17, 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        overflow: 'hidden', 
-        marginRight: 12, 
+    logoContainer: {
+        width: 34,
+        height: 34,
+        borderRadius: 17,
+        justifyContent: 'center',
+        alignItems: 'center',
+        overflow: 'hidden',
+        marginRight: 12,
         // CHANGE: Removed the background color to make the container transparent
-        backgroundColor: 'transparent', 
+        backgroundColor: 'transparent',
     },
     logoImage: { width: 24, height: 24 },
     infoContainer: { flex: 1, height: '100%', justifyContent: 'center', gap: 3 },

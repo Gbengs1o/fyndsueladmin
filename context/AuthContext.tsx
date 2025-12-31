@@ -24,6 +24,15 @@ type AuthContextType = {
   fetchProfile: (user: User) => Promise<void>; // Added fetchProfile function
 };
 
+// --- ADDED: Handle notifications when app is in foreground ---
+Notifications.setNotificationHandler({
+  handleNotification: async () => ({
+    shouldShowAlert: true,
+    shouldPlaySound: true,
+    shouldSetBadge: false,
+  }),
+});
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 // This function handles getting permission and the push token
@@ -72,42 +81,54 @@ export function AuthProvider({ children }: PropsWithChildren) {
   const [profile, setProfile] = useState<ProfileType | null>(null);
   const [isProfileLoading, setIsProfileLoading] = useState(false);
 
-  // --- MODIFIED: fetchProfile with JWT expiration handling ---
+  // --- MODIFIED: fetchProfile with upsert logic for missing profiles ---
   const fetchProfile = useCallback(async (user: User) => {
     if (!user) return;
 
     setIsProfileLoading(true);
     try {
+      // 1. Try to fetch the profile
       const { data, error, status } = await supabase
         .from('profiles')
         .select(`full_name, avatar_url, push_notifications_enabled`)
         .eq('id', user.id)
         .single();
 
-      if (error && status !== 406) {
-        // Check if it's a JWT expiration error
-        if (error.message && (error.message.includes('JWT expired') || error.code === 'PGRST301')) {
-          console.log('JWT expired while fetching profile. Signing out...');
-          await supabase.auth.signOut();
-          return;
-        }
-        throw error;
-      }
-
       if (data) {
         setProfile(data as ProfileType);
+      } else if (error && (status === 406 || error.code === 'PGRST116')) {
+        // 2. Profile doesn't exist (PGRST116 is "The result contains 0 rows")
+        // Create one using metadata from the user session
+        console.log('Profile missing, creating new profile for:', user.email);
+
+        const updates = {
+          id: user.id,
+          full_name: user.user_metadata?.full_name || user.email?.split('@')[0] || 'New User',
+          avatar_url: user.user_metadata?.avatar_url || user.user_metadata?.picture || null,
+          updated_at: new Date(),
+        };
+
+        const { data: newProfile, error: createError } = await supabase
+          .from('profiles')
+          .upsert(updates)
+          .select()
+          .single();
+
+        if (createError) {
+          console.error('Error creating profile:', createError);
+          // Don't throw here, just leave profile as null so the app doesn't crash, 
+          // but maybe show a UI warning if possible.
+        }
+
+        if (newProfile) {
+          setProfile(newProfile as ProfileType);
+        }
+      } else {
+        console.error('Error fetching profile:', error);
       }
+
     } catch (error: any) {
-      console.error('Error fetching user profile:', error);
-
-      // Double-check for JWT expiration in catch block
-      if (error?.message?.includes('JWT expired') || error?.code === 'PGRST301') {
-        console.log('JWT expired (caught). Signing out...');
-        await supabase.auth.signOut();
-        return;
-      }
-
-      setProfile(null);
+      console.error('Unexpected error in fetchProfile:', error);
     } finally {
       setIsProfileLoading(false);
     }
@@ -128,15 +149,22 @@ export function AuthProvider({ children }: PropsWithChildren) {
     fetchSessionAndData();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, newSession) => {
-      setSession(newSession);
-
       if (_event === 'SIGNED_IN' && newSession?.user) {
-        await fetchProfile(newSession.user);
-        await registerForPushNotificationsAsync(newSession.user.id);
-      }
-
-      if (_event === 'SIGNED_OUT') {
+        // Block UI while fetching profile for new sign-ins
+        setIsLoading(true);
+        setSession(newSession);
+        try {
+          await fetchProfile(newSession.user);
+          await registerForPushNotificationsAsync(newSession.user.id);
+        } finally {
+          setIsLoading(false);
+        }
+      } else if (_event === 'SIGNED_OUT') {
+        setSession(null);
         setProfile(null);
+      } else {
+        // For token refreshes etc., just update session without blocking UI
+        setSession(newSession);
       }
     });
 

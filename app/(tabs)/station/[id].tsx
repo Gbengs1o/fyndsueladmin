@@ -7,6 +7,7 @@ import { Stack, useLocalSearchParams, useRouter } from 'expo-router';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, Image, Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import AdvertCard, { Advert } from '../../../components/AdvertCard'; // Added AdvertCard
 import StationIcon from '../../../components/StationIcon';
 import { useAuth } from '../../../context/AuthContext';
 import { useTheme } from '../../../context/ThemeContext';
@@ -46,6 +47,7 @@ export default function StationProfileScreen() {
     const [station, setStation] = useState<StationDetails | null>(null);
     const [reports, setReports] = useState<PriceReport[]>([]);
     const [loading, setLoading] = useState(true);
+    const [nativeAd, setNativeAd] = useState<Advert | null>(null); // State for native ad
     const [isCheckingLocation, setIsCheckingLocation] = useState(false);
     const [userLocation, setUserLocation] = useState<Coords | null>(null);
     const [distance, setDistance] = useState<number | null>(null);
@@ -56,6 +58,8 @@ export default function StationProfileScreen() {
     const [routeGeometry, setRouteGeometry] = useState<GeoJSON.LineString | null>(null);
     const [isFlagged, setIsFlagged] = useState(false);
     const [isFlagging, setIsFlagging] = useState(false);
+    const [isTracked, setIsTracked] = useState(false);
+    const [isTrackingLoading, setIsTrackingLoading] = useState(false);
 
     // Fetch route from OSRM when user location and station are available
     useEffect(() => {
@@ -92,9 +96,46 @@ export default function StationProfileScreen() {
             try {
                 const stationPromise = supabase.from('stations').select('*').eq('id', id).single();
                 const reportsPromise = supabase.from('price_reports').select('*, profiles(full_name, avatar_url)').eq('station_id', id).order('created_at', { ascending: false });
-                const [{ data: stationData, error: stationError }, { data: reportsData, error: reportsError }] = await Promise.all([stationPromise, reportsPromise]);
+
+                // Fetch valid Ads (Kill Switch check is client-side in search, duplicating logic here or keeping simples)
+                // For safety, let's just fetch active ads. If global switch is OFF, we might show one. 
+                // Better: Check kill switch first.
+                const settingsPromise = supabase.from('app_settings').select('value').eq('key', 'global_ads_enabled').single();
+
+                const [{ data: stationData, error: stationError }, { data: reportsData, error: reportsError }, { data: settingsData }] = await Promise.all([stationPromise, reportsPromise, settingsPromise]);
+
                 if (stationError) throw stationError;
                 if (reportsError) throw reportsError;
+
+                // Handle Ads
+                const areAdsEnabled = settingsData?.value ?? true;
+                if (areAdsEnabled) {
+                    const { data: adsData } = await supabase
+                        .from('adverts')
+                        .select('*')
+                        .eq('is_active', true)
+                        .in('type', ['native', 'banner', 'video']) // Accept native, banner, or video
+                        .limit(3); // Fetch a few to randomize or pick first
+
+                    if (adsData && adsData.length > 0) {
+                        // Simple randomizer or pick active
+                        const validAds = adsData.filter(ad => {
+                            const now = new Date();
+                            return new Date(ad.start_date) <= now && new Date(ad.end_date) >= now;
+                        });
+                        if (validAds.length > 0) {
+                            const randomAd = validAds[Math.floor(Math.random() * validAds.length)];
+                            setNativeAd({
+                                ...randomAd,
+                                type: (['banner', 'card', 'native', 'video'].includes(randomAd.type) ? randomAd.type : 'card') as 'banner' | 'card' | 'native' | 'video'
+                            });
+                        }
+                    }
+                } else {
+                    setNativeAd(null);
+                }
+
+
                 setStation(stationData);
                 setReports(reportsData || []);
                 let { status } = await Location.requestForegroundPermissionsAsync();
@@ -124,6 +165,42 @@ export default function StationProfileScreen() {
         };
         checkFlagStatus();
     }, [user, id]);
+
+    // Check if user is tracking this station
+    useEffect(() => {
+        const checkTrackStatus = async () => {
+            if (!user || !id) return;
+            try {
+                const { data } = await supabase
+                    .from('favourite_stations')
+                    .select('station_id')
+                    .eq('station_id', id)
+                    .eq('user_id', user.id)
+                    .single();
+                setIsTracked(!!data);
+            } catch { setIsTracked(false); }
+        };
+        checkTrackStatus();
+    }, [user, id]);
+
+    const handleToggleTrack = async () => {
+        if (!user) { Alert.alert("Login Required", "Please sign in to track stations."); return; }
+        if (!station) return;
+        setIsTrackingLoading(true);
+        try {
+            if (isTracked) {
+                await supabase.from('favourite_stations').delete().match({ user_id: user.id, station_id: station.id });
+                setIsTracked(false);
+            } else {
+                await supabase.from('favourite_stations').insert({ user_id: user.id, station_id: station.id, notifications_enabled: true });
+                setIsTracked(true);
+            }
+        } catch (error: any) {
+            Alert.alert("Error", error.message);
+        } finally {
+            setIsTrackingLoading(false);
+        }
+    };
     useEffect(() => { const initialIndexState: { [key: string]: number } = {}; ALL_FUEL_TYPES.forEach(fuel => { initialIndexState[fuel] = 0; }); setHistoryIndex(initialIndexState); }, [reports]);
 
     const { priceHistories, allAmenities, ratingSummary, leaderboard } = useMemo(() => {
@@ -188,6 +265,40 @@ export default function StationProfileScreen() {
                 if (error) throw error;
                 setIsFlagged(true);
                 Alert.alert("Flagged", "Thank you for reporting this station. We will review it.");
+
+                // The database trigger (handle_station_flagged) creates notifications
+                // Now we need to send push notifications to the users who got DB notifications
+                try {
+                    // Find users who favorited this station with notifications enabled (excluding current user)
+                    const { data: favouriteUsers } = await supabase
+                        .from('favourite_stations')
+                        .select('user_id')
+                        .eq('station_id', station.id)
+                        .eq('notifications_enabled', true)
+                        .neq('user_id', user.id);
+
+                    if (favouriteUsers && favouriteUsers.length > 0) {
+                        const message = `Alert: ${station.name} has been flagged as potentially not existing`;
+
+                        // Send push notifications to each user
+                        for (const fav of favouriteUsers) {
+                            try {
+                                await supabase.functions.invoke('send-push-notification', {
+                                    body: {
+                                        notification_id: null,
+                                        user_id: fav.user_id,
+                                        station_id: station.id,
+                                        message: message,
+                                    }
+                                });
+                            } catch (pushErr) {
+                                console.log('Push notification error:', pushErr);
+                            }
+                        }
+                    }
+                } catch (notifErr) {
+                    console.log('Notification error:', notifErr);
+                }
             }
         } catch (error: any) {
             Alert.alert("Error", `Failed to update flag status: ${error.message}`);
@@ -262,6 +373,27 @@ export default function StationProfileScreen() {
                     <View style={styles.detailRatingRow}><FontAwesome name="star" size={18} color={colors.accent} style={{ marginRight: 7 }} /><Text style={styles.detailRatingText}>{ratingSummary.average} ({ratingSummary.count} reviews)</Text></View>
                     <Text style={styles.detailAddressText}>Address details not available</Text>
                     <View style={styles.detailHoursRow}><FontAwesome name="clock-o" size={20} color={colors.textSecondary} style={{ marginRight: 8 }} /><Text style={styles.detailHoursText}>{allAmenities.includes("Open 24/7") ? "Open 24/7" : "Hours not specified"}</Text></View>
+                    <Pressable
+                        style={[styles.trackButton, isTracked && styles.trackButtonActive]}
+                        onPress={handleToggleTrack}
+                        disabled={isTrackingLoading}
+                    >
+                        {isTrackingLoading ? (
+                            <ActivityIndicator color={isTracked ? '#fff' : colors.primary} size="small" />
+                        ) : (
+                            <>
+                                <FontAwesome
+                                    name={isTracked ? "bookmark" : "bookmark-o"}
+                                    size={16}
+                                    color={isTracked ? '#fff' : colors.primary}
+                                    style={{ marginRight: 8 }}
+                                />
+                                <Text style={[styles.trackButtonText, isTracked && styles.trackButtonTextActive]}>
+                                    {isTracked ? "Tracking" : "Track Activity"}
+                                </Text>
+                            </>
+                        )}
+                    </Pressable>
                     <Pressable style={styles.takeMeThereButton} onPress={handleTakeMeThere}><Text style={styles.takeMeThereButtonText}>Take me there</Text></Pressable>
                     <Pressable
                         style={[styles.flagButton, isFlagged && styles.flagButtonActive]}
@@ -287,6 +419,13 @@ export default function StationProfileScreen() {
                 </View>
 
                 <View style={styles.priceReportContainer}><View style={styles.priceReportHeader}><Text style={styles.priceReportTitle}>Station Price</Text></View>{ALL_FUEL_TYPES.map(fuel => { const history = priceHistories.get(fuel) || []; const currentIndex = historyIndex[fuel] || 0; const currentData = history[currentIndex]; const isNewerDisabled = currentIndex === 0; const isOlderDisabled = currentIndex >= history.length - 1; return (<View key={fuel} style={styles.priceRow}><Text style={styles.fuelNameText}>{fuel}</Text><View style={styles.priceInteractionWrapper}><Pressable onPress={() => handleHistoryNavigation(fuel, 'newer')} disabled={isNewerDisabled} style={styles.arrowButton}><FontAwesome name="chevron-left" size={16} color={isNewerDisabled ? colors.disabled : colors.primary} /></Pressable><View style={styles.priceInfoBox}>{currentData ? (<><Text style={styles.priceValueText}>₦{currentData.price}/{fuel === 'Gas' ? 'KG' : 'L'}</Text><Text style={styles.priceTimestampText}>{formatTimestamp(currentData.created_at)}</Text></>) : <Text style={styles.priceValueText}>N/A</Text>}</View><Pressable onPress={() => handleHistoryNavigation(fuel, 'older')} disabled={isOlderDisabled} style={styles.arrowButton}><FontAwesome name="chevron-right" size={16} color={isOlderDisabled ? colors.disabled : colors.primary} /></Pressable></View></View>); })}<Pressable style={[styles.reportPriceButton, isCheckingLocation && styles.buttonDisabled]} onPress={handleReportPress} disabled={isCheckingLocation}>{isCheckingLocation ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.reportPriceButtonText}>Report Price</Text>}</Pressable></View>
+
+                {nativeAd && (
+                    <View style={{ marginBottom: 20 }}>
+                        <AdvertCard advert={nativeAd} />
+                    </View>
+                )}
+
                 <View style={styles.cardContainer}><Text style={styles.cardTitle}>Travel Estimates</Text>{distance !== null && travelTimes ? (<View style={styles.travelGrid}><View style={styles.travelBox}><FontAwesome name="male" size={28} color={colors.text} /><Text style={styles.travelTime}>{travelTimes.walk}</Text><Text style={styles.travelLabel}>Walk</Text></View><View style={styles.travelBox}><FontAwesome name="rocket" size={28} color={colors.text} /><Text style={styles.travelTime}>{travelTimes.run}</Text><Text style={styles.travelLabel}>Run</Text></View><View style={styles.travelBox}><FontAwesome name="car" size={28} color={colors.text} /><Text style={styles.travelTime}>{travelTimes.drive}</Text><Text style={styles.travelLabel}>Vehicle</Text></View></View>) : <Text style={styles.noDataText}>Calculating travel times...</Text>}</View>
                 <View style={styles.cardContainer}><Text style={styles.cardTitle}>Amenities</Text>{allAmenities.length > 0 ? (<View style={styles.amenitiesGrid}>{amenitiesToShow.map(item => (<View key={item} style={styles.amenityItem}><View style={styles.amenityIconContainer}><FontAwesome name={amenityIcons[item] || 'check-circle'} size={24} color={colors.text} /></View><Text style={styles.amenityText}>{item}</Text></View>))}</View>) : <Text style={styles.noDataText}>No amenities reported yet.</Text>}{allAmenities.length > INITIAL_AMENITIES_LIMIT && (<Pressable style={styles.viewAllButton} onPress={() => setIsAmenitiesExpanded(!isAmenitiesExpanded)}><Text style={styles.viewAllButtonText}>{isAmenitiesExpanded ? 'Show Less' : 'View all amenities'}</Text></Pressable>)}</View>
                 <View style={styles.cardContainer}><Text style={styles.cardTitle}>Ratings & Comments ({ratingSummary.count})</Text>{ratingSummary.count > 0 && (<View style={styles.ratingsSummaryContainer}><View style={styles.ratingDistribution}>{[5, 4, 3, 2, 1].map(star => (<View key={star} style={styles.ratingBarRow}><Text style={styles.ratingBarLabel}>{star}</Text><FontAwesome name="star" size={14} color={colors.accent} style={{ marginHorizontal: 4 }} /><View style={styles.ratingBarBackground}><View style={[styles.ratingBarForeground, { width: `${(ratingSummary.distribution[star] / ratingSummary.count) * 100}%` }]} /></View></View>))}</View><View style={styles.averageRatingBox}><Text style={styles.averageRatingValue}>{ratingSummary.average}</Text><Text style={styles.averageRatingLabel}>out of 5</Text></View></View>)}<View style={styles.commentList}>{commentsToShow.length > 0 ? commentsToShow.map((report, index) => (<View key={report.id} style={[styles.commentCard, index === commentsToShow.length - 1 && styles.lastCommentCard]}><View style={styles.commentHeader}><View style={styles.commentUser}><FontAwesome name="user-circle" size={38} color={colors.textSecondary} /><View><Text style={styles.commentUserName}>{report.profiles?.full_name || 'A User'}</Text><View style={styles.commentRating}>{Array.from({ length: 5 }).map((_, i) => <FontAwesome key={i} name="star" size={14} color={i < (report.rating || 0) ? colors.accent : colors.disabled} />)}</View></View></View><Text style={styles.commentTimestamp}>{formatTimestamp(report.created_at).replace('Updated ', '')}</Text></View><Text style={styles.commentText}>{report.notes}</Text></View>)) : <Text style={styles.noDataText}>No comments yet.</Text>}</View>
@@ -315,8 +454,12 @@ const getThemedStyles = (colors: AppColors) => StyleSheet.create({
     detailAddressText: { fontSize: 12, color: colors.textSecondary, textAlign: 'center', marginBottom: 12 },
     detailHoursRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 20 },
     detailHoursText: { fontSize: 14, fontWeight: '500', color: colors.textSecondary },
-    takeMeThereButton: { backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 40, borderRadius: 8, width: '80%', alignItems: 'center' },
+    takeMeThereButton: { backgroundColor: colors.primary, paddingVertical: 12, paddingHorizontal: 40, borderRadius: 8, width: '80%', alignItems: 'center', marginTop: 8 },
     takeMeThereButtonText: { color: colors.primaryText, fontSize: 16, fontWeight: 'bold' },
+    trackButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderWidth: 1.5, borderColor: '#00c853', paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, width: '80%' },
+    trackButtonActive: { backgroundColor: '#00c853', borderColor: '#00c853' },
+    trackButtonText: { color: '#00c853', fontSize: 14, fontWeight: '600' },
+    trackButtonTextActive: { color: '#fff' },
     flagButton: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent', borderWidth: 1.5, borderColor: colors.destructive, paddingVertical: 10, paddingHorizontal: 20, borderRadius: 8, width: '80%', marginTop: 12 },
     flagButtonActive: { backgroundColor: colors.destructive, borderColor: colors.destructive },
     flagButtonText: { color: colors.destructive, fontSize: 14, fontWeight: '600' },
