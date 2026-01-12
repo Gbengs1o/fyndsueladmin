@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
-import { format } from "date-fns"
+import { format, subDays, startOfDay, eachDayOfInterval, isSameDay } from "date-fns"
 import {
     BarChart,
     Bar,
@@ -19,14 +19,10 @@ import {
     PieChart,
     Pie,
     Cell,
-    AreaChart,
-    Area
 } from "recharts"
-import { Loader2, TrendingUp, Users, Activity, Fuel, Calendar } from "lucide-react"
+import { Loader2, TrendingUp, Users, Activity, Fuel } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
     Table,
     TableBody,
@@ -39,6 +35,24 @@ import {
 // Theme colors
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
 
+// Helper to extract state from address
+const extractRegion = (address: string | null): string => {
+    if (!address) return 'Unknown'
+    const parts = address.split(',')
+    // Heuristic: Last part is usually state or country, second to last might be city/state
+    // For Nigerian addresses often like: "123 Street, Ikeja, Lagos"
+    if (parts.length >= 1) {
+        const last = parts[parts.length - 1].trim()
+        const secondLast = parts.length > 1 ? parts[parts.length - 2].trim() : ''
+
+        // List of common Nigerian states/cities to check against if needed
+        // For now, let's just take the last part if it looks like a state, or second to last.
+        // Let's assume the last part is the State.
+        return last.replace(/\.$/, '') // Remove trailing dot
+    }
+    return 'Unknown'
+}
+
 export default function AnalyticsPage() {
     const { isLoading: authLoading } = useAuth()
     const [data, setData] = useState<any>(null)
@@ -49,45 +63,166 @@ export default function AnalyticsPage() {
 
         const fetchData = async () => {
             setLoading(true)
-            const { data: analytics, error } = await supabase.rpc('get_dashboard_analytics')
+            const thirtyDaysAgo = subDays(new Date(), 30).toISOString()
 
-            if (error) {
-                console.error('Error fetching analytics:', error)
-            } else {
-                // Process dates for charts
-                if (analytics) {
-                    // Transform Price Trends to be Chart-friendly (pivot by fuel type if needed, or structured array)
-                    // The SQL returns raw rows. We might need to group them by date for multi-line chart.
-                    const trendMap = new Map();
-                    analytics.price_trends.forEach((item: any) => {
-                        const d = format(new Date(item.date), 'MMM dd');
-                        if (!trendMap.has(d)) trendMap.set(d, { date: d });
-                        const existing = trendMap.get(d);
-                        existing[item.fuel_type] = item.avg_price;
-                    });
-                    const formattedTrends = Array.from(trendMap.values());
+            try {
+                // 1. Fetch Price Reports (Last 30 Days)
+                const reportsPromise = supabase
+                    .from('price_reports')
+                    .select('created_at, price, fuel_type, station_id, user_id')
+                    .gte('created_at', thirtyDaysAgo)
+                    .order('created_at', { ascending: true })
 
-                    // User Growth
-                    const formattedGrowth = analytics.user_growth.map((d: any) => ({
-                        date: format(new Date(d.date), 'MMM dd'),
-                        new_users: d.new_users
-                    }));
+                // 2. Fetch User Growth (Last 30 Days)
+                const usersPromise = supabase
+                    .from('profiles')
+                    .select('created_at')
+                    .gte('created_at', thirtyDaysAgo)
 
-                    // Volume
-                    const formattedVolume = analytics.recent_activity_volume.map((d: any) => ({
-                        date: format(new Date(d.date), 'MMM dd'),
-                        count: d.count
-                    }));
+                // 3. Fetch Stations (For names and addresses)
+                // We fetch all stations to map IDs and extract regions.
+                // Optimization: We could filter by IDs found in reports, but fetching all stations (usually < thousands) is okay for client-side mapping.
+                const stationsPromise = supabase
+                    .from('stations')
+                    .select('id, name, address, is_active')
 
-                    setData({
-                        ...analytics,
-                        formattedTrends,
-                        formattedGrowth,
-                        formattedVolume
+                // 4. Verification Data (Latest 20 reports with joins)
+                const verificationPromise = supabase
+                    .from('price_reports')
+                    .select('created_at, price, fuel_type, station_id, user_id, stations(name, address), profiles(full_name)')
+                    .order('created_at', { ascending: false })
+                    .limit(20)
+
+                const [
+                    { data: reports, error: reportsError },
+                    { data: newUsers, error: usersError },
+                    { data: stations, error: stationsError },
+                    { data: verificationData, error: verificationError }
+                ] = await Promise.all([
+                    reportsPromise,
+                    usersPromise,
+                    stationsPromise,
+                    verificationPromise
+                ])
+
+                if (reportsError) console.error("Error fetching reports:", reportsError)
+                if (usersError) console.error("Error fetching users:", usersError)
+                if (stationsError) console.error("Error fetching stations:", stationsError)
+                if (verificationError) console.error("Error fetching verification data:", verificationError)
+
+                // --- PROCESS DATA ---
+
+                // Map stations for quick lookup
+                const stationMap = new Map(stations?.map((s: any) => [s.id, s]) || [])
+
+                // 1. Price Trends & Volume (Daily)
+                const dateRange = eachDayOfInterval({ start: subDays(new Date(), 29), end: new Date() })
+
+                const formattedTrends = dateRange.map(date => {
+                    const dayStr = format(date, 'MMM dd')
+                    const dayReports = reports?.filter((r: any) => isSameDay(new Date(r.created_at), date)) || []
+
+                    // Avg Price per Fuel Type
+                    const fuelTypes = ['PMS', 'AGO', 'DPK', 'LPG']
+                    const prices: any = { date: dayStr }
+
+                    fuelTypes.forEach(type => {
+                        const typeReports = dayReports.filter((r: any) => r.fuel_type === type)
+                        if (typeReports.length > 0) {
+                            const avg = typeReports.reduce((sum: number, r: any) => sum + Number(r.price), 0) / typeReports.length
+                            prices[type] = Math.round(avg * 100) / 100
+                        }
                     })
-                }
+                    return prices
+                })
+
+                const formattedVolume = dateRange.map(date => {
+                    const count = reports?.filter((r: any) => isSameDay(new Date(r.created_at), date)).length || 0
+                    return { date: format(date, 'MMM dd'), count }
+                })
+
+                // 2. User Growth (Daily)
+                const formattedGrowth = dateRange.map(date => {
+                    const count = newUsers?.filter((u: any) => isSameDay(new Date(u.created_at), date)).length || 0
+                    return { date: format(date, 'MMM dd'), new_users: count }
+                })
+
+                // 3. Fuel Distribution
+                const fuelDistMap = new Map()
+                reports?.forEach((r: any) => {
+                    fuelDistMap.set(r.fuel_type, (fuelDistMap.get(r.fuel_type) || 0) + 1)
+                })
+                const fuel_distribution = Array.from(fuelDistMap.entries()).map(([fuel_type, count]) => ({ fuel_type, count }))
+
+                // 4. Top Stations (by Report Volume)
+                const stationCountMap = new Map()
+                reports?.forEach((r: any) => {
+                    stationCountMap.set(r.station_id, (stationCountMap.get(r.station_id) || 0) + 1)
+                })
+                const top_stations = Array.from(stationCountMap.entries())
+                    .sort((a: any, b: any) => b[1] - a[1])
+                    .slice(0, 5)
+                    .map(([id, count]) => ({
+                        name: stationMap.get(id)?.name || 'Unknown Station',
+                        reports: count
+                    }))
+
+                // 5. Regional Stats
+                const regionMap = new Map()
+                reports?.forEach((r: any) => {
+                    const station = stationMap.get(r.station_id)
+                    const region = extractRegion(station?.address)
+                    if (!regionMap.has(region)) {
+                        regionMap.set(region, {
+                            region,
+                            reports: 0,
+                            active_users: new Set(),
+                            total_price: 0,
+                            price_count: 0
+                        })
+                    }
+                    const entry = regionMap.get(region)
+                    entry.reports += 1
+                    if (r.user_id) entry.active_users.add(r.user_id)
+                    if (r.fuel_type === 'PMS') { // Only track PMS for avg price comparison to be fair
+                        entry.total_price += Number(r.price)
+                        entry.price_count += 1
+                    }
+                })
+
+                const regional_stats = Array.from(regionMap.values()).map((entry: any) => ({
+                    region: entry.region,
+                    reports: entry.reports,
+                    active_users: entry.active_users.size,
+                    avg_pms_price: entry.price_count > 0 ? Math.round(entry.total_price / entry.price_count) : 0
+                })).sort((a: any, b: any) => b.reports - a.reports).slice(0, 8) // Top 8 regions
+
+                // 6. Verification Data Formatting
+                const formattedVerification = verificationData?.map((item: any) => ({
+                    ...item,
+                    station_name: item.stations?.name || 'Unknown',
+                    region: extractRegion(item.stations?.address),
+                    reported_by: item.profiles?.full_name || 'Anonymous'
+                }))
+
+                setData({
+                    recent_activity_volume: formattedVolume, // actually array of {date, count}
+                    formattedTrends,
+                    formattedGrowth,
+                    fuel_distribution,
+                    top_stations,
+                    regional_stats,
+                    verification_data: formattedVerification,
+                    // raw counts for cards
+                    total_reports_30d: reports?.length || 0,
+                    total_new_users_30d: newUsers?.length || 0
+                })
+
+            } catch (error) {
+                console.error("Error processing analytics:", error)
+            } finally {
+                setLoading(false)
             }
-            setLoading(false)
         }
 
         fetchData()
@@ -120,9 +255,9 @@ export default function AnalyticsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {data?.recent_activity_volume.reduce((acc: number, curr: any) => acc + curr.count, 0) || 0}
+                            {data?.total_reports_30d?.toLocaleString() || 0}
                         </div>
-                        <p className="text-xs text-muted-foreground">+20.1% from last month</p>
+                        <p className="text-xs text-muted-foreground">Last 30 days activity</p>
                     </CardContent>
                 </Card>
                 <Card>
@@ -132,7 +267,7 @@ export default function AnalyticsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            ₦{data?.formattedTrends[data.formattedTrends.length - 1]?.['PMS'] || data?.formattedTrends[data.formattedTrends.length - 1]?.['Petrol'] || '---'}
+                            ₦{data?.formattedTrends[data.formattedTrends.length - 1]?.['PMS'] || '---'}
                         </div>
                         <p className="text-xs text-muted-foreground">Latest daily average</p>
                     </CardContent>
@@ -144,7 +279,7 @@ export default function AnalyticsPage() {
                     </CardHeader>
                     <CardContent>
                         <div className="text-2xl font-bold">
-                            {data?.user_growth.reduce((acc: number, curr: any) => acc + curr.new_users, 0) || 0}
+                            {data?.total_new_users_30d?.toLocaleString() || 0}
                         </div>
                     </CardContent>
                 </Card>
@@ -181,11 +316,10 @@ export default function AnalyticsPage() {
                                     formatter={(value: any) => [`₦${value}`, 'Price']}
                                 />
                                 <Legend />
-                                {/* Dynamically generate lines if multiple fuel types exist, for now assuming PMS/NGO/AGO standard keys if they appear */}
-                                <Line type="monotone" dataKey="PMS" name="Petrol" stroke="#ef4444" strokeWidth={2} dot={false} />
-                                <Line type="monotone" dataKey="AGO" name="Diesel" stroke="#3b82f6" strokeWidth={2} dot={false} />
-                                <Line type="monotone" dataKey="DPK" name="Kerosene" stroke="#eab308" strokeWidth={2} dot={false} />
-                                <Line type="monotone" dataKey="LPG" name="Gas" stroke="#22c55e" strokeWidth={2} dot={false} />
+                                <Line type="monotone" dataKey="PMS" name="Petrol" stroke="#ef4444" strokeWidth={2} dot={false} connectNulls />
+                                <Line type="monotone" dataKey="AGO" name="Diesel" stroke="#3b82f6" strokeWidth={2} dot={false} connectNulls />
+                                <Line type="monotone" dataKey="DPK" name="Kerosene" stroke="#eab308" strokeWidth={2} dot={false} connectNulls />
+                                <Line type="monotone" dataKey="LPG" name="Gas" stroke="#22c55e" strokeWidth={2} dot={false} connectNulls />
                             </LineChart>
                         </ResponsiveContainer>
                     </CardContent>
@@ -364,10 +498,10 @@ export default function AnalyticsPage() {
                                     <TableCell className="text-muted-foreground">
                                         {item.user_id ? (
                                             <Link href={`/dashboard/users/${item.user_id}`} className="hover:underline text-primary">
-                                                {item.reported_by || 'Unknown User'}
+                                                {item.reported_by}
                                             </Link>
                                         ) : (
-                                            item.reported_by || 'Anonymous'
+                                            item.reported_by
                                         )}
                                     </TableCell>
                                 </TableRow>
