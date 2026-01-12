@@ -97,7 +97,7 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <Sidebar>
+      <Sidebar collapsible="icon">
         <SidebarHeader>
           <div className="flex items-center gap-2">
             <Logo className="h-8 w-auto text-primary" />
@@ -150,7 +150,7 @@ export default function DashboardLayout({
       </Sidebar>
       <SidebarInset>
         <header className="sticky top-0 z-30 flex h-14 items-center gap-4 border-b bg-background px-4 sm:static sm:h-auto sm:border-0 sm:bg-transparent sm:px-6">
-          <SidebarTrigger className="sm:hidden" />
+          <SidebarTrigger />
           <div className="flex items-center gap-2 ml-auto">
             <Button variant="outline" size="icon" className="w-8 h-8">
               <Bell className="w-4 h-4" />
