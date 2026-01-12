@@ -41,35 +41,60 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   useEffect(() => {
-    const initAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession()
-      setSession(session)
-      setUser(session?.user ?? null)
+    let mounted = true
 
-      if (session?.user) {
-        const admin = await fetchAdminUser(session.user.id)
-        setAdminUser(admin)
+    // Safety timeout to prevent infinite loading
+    const safetyTimeout = setTimeout(() => {
+      if (mounted) setIsLoading(false)
+    }, 10000)
+
+    const initAuth = async () => {
+      try {
+        const { data: { session }, error } = await supabase.auth.getSession()
+        if (error) throw error
+
+        if (mounted) {
+          setSession(session)
+          setUser(session?.user ?? null)
+
+          if (session?.user) {
+            const admin = await fetchAdminUser(session.user.id)
+            if (mounted) setAdminUser(admin)
+          }
+        }
+      } catch (error) {
+        console.error("Error initializing auth:", error)
+      } finally {
+        clearTimeout(safetyTimeout)
+        if (mounted) setIsLoading(false)
       }
-      setIsLoading(false)
     }
 
     initAuth()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
+        if (!mounted) return
+
         setSession(session)
         setUser(session?.user ?? null)
 
         if (session?.user) {
           const admin = await fetchAdminUser(session.user.id)
-          setAdminUser(admin)
+          if (mounted) setAdminUser(admin)
         } else {
-          setAdminUser(null)
+          if (mounted) setAdminUser(null)
         }
+
+        // Ensure loading is false after auth state change
+        if (mounted) setIsLoading(false)
       }
     )
 
-    return () => subscription.unsubscribe()
+    return () => {
+      mounted = false
+      subscription.unsubscribe()
+    }
   }, [])
 
   const signIn = async (email: string, password: string) => {
