@@ -4,7 +4,7 @@ import Link from "next/link"
 import { useEffect, useState } from "react"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
-import { format, subDays, startOfDay, isSameDay, parseISO } from "date-fns"
+import { format, subDays } from "date-fns"
 import {
     BarChart,
     Bar,
