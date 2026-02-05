@@ -1,22 +1,22 @@
 
 "use client"
 
-import * as React from "react"
-import { useParams, useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/lib/auth-context"
-import { format, formatDistanceToNow } from "date-fns"
-import Link from "next/link"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, ArrowLeft, Mail, Phone, User as UserIcon, Edit, ShieldX, MapPin, Flag, DollarSign, Lightbulb, TrendingUp, Star, ImageIcon, ExternalLink } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
+import { supabase } from "@/lib/supabase"
+import { format, formatDistanceToNow } from "date-fns"
+import { ArrowLeft, DollarSign, ExternalLink, Flag, Gamepad2, ImageIcon, Lightbulb, Loader2, Mail, Phone, ShieldX, Star, TrendingUp, User as UserIcon } from "lucide-react"
+import Link from "next/link"
+import { useParams, useRouter } from "next/navigation"
+import * as React from "react"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Progress } from "@/components/ui/progress"
 
 interface UserProfile {
     id: string;
@@ -62,6 +62,22 @@ interface FlaggedItem {
     station_id?: number;
 }
 
+interface PointTransaction {
+    id: number;
+    amount: number;
+    type: string;
+    description: string;
+    created_at: string;
+}
+
+interface RedemptionRequest {
+    id: number;
+    amount_points: number;
+    amount_naira: number;
+    status: string;
+    created_at: string;
+}
+
 export default function UserDetailPage() {
     const params = useParams()
     const router = useRouter()
@@ -73,6 +89,11 @@ export default function UserDetailPage() {
     const [reports, setReports] = React.useState<PriceReport[]>([])
     const [suggestions, setSuggestions] = React.useState<Suggestion[]>([])
     const [flags, setFlags] = React.useState<FlaggedItem[]>([])
+
+    // Gamification Data
+    const [transactions, setTransactions] = React.useState<PointTransaction[]>([])
+    const [redemptions, setRedemptions] = React.useState<RedemptionRequest[]>([])
+    const [totalPoints, setTotalPoints] = React.useState(0)
 
     // Derived Stats
     const [trustScore, setTrustScore] = React.useState(0)
@@ -119,16 +140,41 @@ export default function UserDetailPage() {
             .order('created_at', { ascending: false })
             .limit(50)
 
+        // 6. Point Transactions
+        const transactionsPromise = supabase
+            .from('point_transactions')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50)
+
+        // 7. Redemption Requests
+        const redemptionsPromise = supabase
+            .from('redemption_requests')
+            .select('*')
+            .eq('user_id', userId)
+            .order('created_at', { ascending: false })
+            .limit(50)
+
+        // 8. Stats (Total Points)
+        const statsPromise = supabase.rpc('get_user_stats', { target_user_id: userId })
+
         const [
             { data: profileData, error: profileError },
             { data: reportsData },
             { data: suggestionsData },
-            { data: flagsData }
+            { data: flagsData },
+            { data: transactionsData },
+            { data: redemptionsData },
+            { data: statsData }
         ] = await Promise.all([
             profilePromise,
             reportsPromise,
             suggestionsPromise,
-            flagsPromise
+            flagsPromise,
+            transactionsPromise,
+            redemptionsPromise,
+            statsPromise
         ]);
 
         if (profileError || !profileData) {
@@ -186,6 +232,17 @@ export default function UserDetailPage() {
                 station_name: f.stations?.name || 'Unknown Station',
                 station_id: f.station_id
             })))
+        }
+
+        if (transactionsData) setTransactions(transactionsData)
+        if (redemptionsData) setRedemptions(redemptionsData)
+
+        // Handle User Stats Response (might be array or single object depending on RPC)
+        if (statsData) {
+            const stats = Array.isArray(statsData) ? statsData[0] : statsData;
+            if (stats && typeof stats.total_points === 'number') {
+                setTotalPoints(stats.total_points);
+            }
         }
 
         setLoading(false)
@@ -311,6 +368,16 @@ export default function UserDetailPage() {
                         <p className="text-xs text-muted-foreground">Content flagged</p>
                     </CardContent>
                 </Card>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Total Points</CardTitle>
+                        <Gamepad2 className="h-4 w-4 text-primary" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{totalPoints.toLocaleString()}</div>
+                        <p className="text-xs text-muted-foreground">Lifetime earned points</p>
+                    </CardContent>
+                </Card>
             </div>
 
             <div className="grid gap-6 md:grid-cols-3">
@@ -387,10 +454,11 @@ export default function UserDetailPage() {
                 {/* --- Right Column: Activity Tabs --- */}
                 <div className="md:col-span-2">
                     <Tabs defaultValue="reports" className="w-full">
-                        <TabsList className="grid w-full grid-cols-3 mb-4">
+                        <TabsList className="grid w-full grid-cols-4 mb-4">
                             <TabsTrigger value="reports">Price Reports</TabsTrigger>
                             <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
                             <TabsTrigger value="flags">Flags</TabsTrigger>
+                            <TabsTrigger value="gamification">Gamification</TabsTrigger>
                         </TabsList>
 
                         {/* --- Tab: Price Reports --- */}
@@ -528,6 +596,86 @@ export default function UserDetailPage() {
                                     </Table>
                                 </CardContent>
                             </Card>
+                        </TabsContent>
+
+                        {/* --- Tab: Gamification --- */}
+                        <TabsContent value="gamification">
+                            <div className="flex flex-col gap-4">
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-base">Point History</CardTitle>
+                                        <CardDescription>Recent point earnings and deductions</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Type</TableHead>
+                                                    <TableHead>Description</TableHead>
+                                                    <TableHead className="text-right">Amount</TableHead>
+                                                    <TableHead className="text-right">Date</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {transactions.length > 0 ? transactions.map((t) => (
+                                                    <TableRow key={t.id}>
+                                                        <TableCell className="font-medium capitalize">{t.type.replace(/_/g, ' ')}</TableCell>
+                                                        <TableCell className="text-muted-foreground text-xs">{t.description}</TableCell>
+                                                        <TableCell className={`text-right font-mono ${t.amount > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                                            {t.amount > 0 ? '+' : ''}{t.amount}
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-muted-foreground text-xs">
+                                                            {format(new Date(t.created_at), "MMM d, h:mm a")}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )) : (
+                                                    <TableRow><TableCell colSpan={4} className="h-24 text-center text-muted-foreground">No transactions found.</TableCell></TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </CardContent>
+                                </Card>
+
+                                <Card>
+                                    <CardHeader>
+                                        <CardTitle className="text-base">Redemption Requests</CardTitle>
+                                        <CardDescription>History of cash out requests</CardDescription>
+                                    </CardHeader>
+                                    <CardContent>
+                                        <Table>
+                                            <TableHeader>
+                                                <TableRow>
+                                                    <TableHead>Amount</TableHead>
+                                                    <TableHead>Status</TableHead>
+                                                    <TableHead className="text-right">Date</TableHead>
+                                                </TableRow>
+                                            </TableHeader>
+                                            <TableBody>
+                                                {redemptions.length > 0 ? redemptions.map((r) => (
+                                                    <TableRow key={r.id}>
+                                                        <TableCell>
+                                                            <div className="flex flex-col">
+                                                                <span className="font-bold">₦{r.amount_naira.toLocaleString()}</span>
+                                                                <span className="text-xs text-muted-foreground">{r.amount_points.toLocaleString()} pts</span>
+                                                            </div>
+                                                        </TableCell>
+                                                        <TableCell>
+                                                            <Badge variant={r.status === 'approved' ? 'default' : r.status === 'rejected' ? 'destructive' : 'secondary'}>
+                                                                {r.status}
+                                                            </Badge>
+                                                        </TableCell>
+                                                        <TableCell className="text-right text-muted-foreground text-xs">
+                                                            {format(new Date(r.created_at), "MMM d, yyyy")}
+                                                        </TableCell>
+                                                    </TableRow>
+                                                )) : (
+                                                    <TableRow><TableCell colSpan={3} className="h-24 text-center text-muted-foreground">No redemptions found.</TableCell></TableRow>
+                                                )}
+                                            </TableBody>
+                                        </Table>
+                                    </CardContent>
+                                </Card>
+                            </div>
                         </TabsContent>
                     </Tabs>
                 </div>

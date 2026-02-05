@@ -1,30 +1,35 @@
 
 "use client"
 
-import { useState, useEffect } from "react"
-import Link from "next/link"
-import {
-  Fuel,
-  Users,
-  CheckCheck,
-  Flag,
-  Lightbulb,
-  TrendingUp,
-  TrendingDown,
-  ArrowRight,
-  Plus,
-  Bell,
-  BarChart3,
-  Calendar,
-  Clock,
-  Activity
-} from "lucide-react"
-import { Area, AreaChart, Bar, BarChart, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from "recharts"
 import { format, formatDistanceToNow } from "date-fns"
+import {
+  Activity,
+  ArrowRight,
+  BarChart3,
+  Bell,
+  Calendar,
+  CheckCheck,
+  Clock,
+  Coins,
+  Flag,
+  Fuel,
+  Lightbulb,
+  Plus,
+  ShieldCheck,
+  TrendingDown,
+  TrendingUp,
+  Users
+} from "lucide-react"
+import Link from "next/link"
+import { useEffect, useState } from "react"
+import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts"
 
-import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
+import { supabase } from "@/lib/supabase"
 
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import {
   Card,
   CardContent,
@@ -32,6 +37,7 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card"
+import { Skeleton } from "@/components/ui/skeleton"
 import {
   Table,
   TableBody,
@@ -40,11 +46,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
 import { User } from "lucide-react"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Skeleton } from "@/components/ui/skeleton"
 
 
 // --- Define Types for our Fetched Data ---
@@ -54,6 +56,7 @@ interface Stats {
   totalSubmissions: number;
   pendingSuggestions: number;
   totalFlags: number;
+  pendingManagers: number;
 }
 interface MonthlyPrice {
   month: string;
@@ -85,6 +88,11 @@ interface RecentFlag {
   created_at: string;
   user_name: string | null;
   avatar_url: string | null;
+}
+interface GamificationStats {
+  total_points_awarded: number;
+  total_points_redeemed: number;
+  pending_redemptions: number;
 }
 
 // Stat Card Component - Clean Design
@@ -185,6 +193,7 @@ export default function DashboardPage() {
   const [recentStations, setRecentStations] = useState<RecentStation[]>([]);
   const [recentSuggestions, setRecentSuggestions] = useState<RecentSuggestion[]>([]);
   const [recentFlags, setRecentFlags] = useState<RecentFlag[]>([]);
+  const [gamificationStats, setGamificationStats] = useState<GamificationStats | null>(null);
 
   useEffect(() => {
     if (authLoading) return;
@@ -198,6 +207,7 @@ export default function DashboardPage() {
         const submissionCountPromise = supabase.from('price_reports').select('*', { count: 'exact', head: true });
         const suggestionCountPromise = supabase.from('suggested_fuel_stations').select('*', { count: 'exact', head: true }).eq('status', 'pending');
         const flagCountPromise = supabase.from('flagged_stations').select('*', { count: 'exact', head: true });
+        const managerCountPromise = supabase.from('manager_profiles').select('*', { count: 'exact', head: true }).eq('verification_status', 'pending');
 
         const [
           { count: stationCount },
@@ -205,12 +215,14 @@ export default function DashboardPage() {
           { count: submissionCount },
           { count: suggestionCount },
           { count: flagCount },
+          { count: managerCount },
         ] = await Promise.all([
           stationCountPromise,
           userCountPromise,
           submissionCountPromise,
           suggestionCountPromise,
           flagCountPromise,
+          managerCountPromise,
         ]);
 
         setStats({
@@ -219,6 +231,7 @@ export default function DashboardPage() {
           totalSubmissions: submissionCount ?? 0,
           pendingSuggestions: suggestionCount ?? 0,
           totalFlags: flagCount ?? 0,
+          pendingManagers: managerCount ?? 0,
         });
       } catch (error) {
         console.error("Error fetching stats:", error);
@@ -227,17 +240,12 @@ export default function DashboardPage() {
       }
     };
 
-    // 2. Fetch Charts Data (Might be slower)
+    // 2. Fetch Charts Data (Optimized)
     const fetchCharts = async () => {
       setChartsLoading(true);
       try {
         const priceTrendPromise = supabase.rpc('get_monthly_avg_price');
-
-        const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-        const regionSubmissionsPromise = supabase
-          .from('price_reports')
-          .select('stations ( address )')
-          .gte('created_at', sevenDaysAgo);
+        const regionSubmissionsPromise = supabase.rpc('get_weekly_submission_counts');
 
         const [{ data: trendData, error: trendError }, { data: regionChartData, error: regionChartError }] = await Promise.all([
           priceTrendPromise,
@@ -254,20 +262,9 @@ export default function DashboardPage() {
         if (trendError) console.error("Error fetching price trend:", trendError.message);
 
         if (regionChartData) {
-          const counts = regionChartData
-            .filter((r: any) => r.stations?.address)
-            .reduce((acc: Record<string, number>, report: any) => {
-              const address = report.stations.address;
-              acc[address] = (acc[address] || 0) + 1;
-              return acc;
-            }, {});
-
-          const sortedData = Object.entries(counts)
-            .map(([address, submissions]) => ({ address, submissions: submissions as number }))
-            .sort((a, b) => b.submissions - a.submissions)
-            .slice(0, 10);
-
-          setRegionData(sortedData);
+          // Data is already aggregated from the server!
+          // Expected format: [{ address: string, submissions: number }]
+          setRegionData(regionChartData);
         }
         if (regionChartError) {
           console.error("Error fetching region data:", regionChartError.message);
@@ -355,9 +352,22 @@ export default function DashboardPage() {
       }
     };
 
+    // 4. Fetch Gamification Stats
+    const fetchGamificationStats = async () => {
+      try {
+        const { data, error } = await supabase.rpc('get_gamification_dashboard_stats');
+        if (data && !error) {
+          setGamificationStats(data);
+        }
+      } catch (err) {
+        console.error('Gamification stats error:', err);
+      }
+    };
+
     fetchStats();
     fetchCharts();
     fetchRecentLists();
+    fetchGamificationStats();
 
   }, [authLoading]);
 
@@ -390,7 +400,7 @@ export default function DashboardPage() {
       </div>
 
       {/* --- Stat Cards Using Real Data --- */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
           href="/dashboard/stations"
           title="Total Stations"
@@ -399,6 +409,16 @@ export default function DashboardPage() {
           trend="up"
           trendValue="+12 this month"
           delay={0}
+          loading={statsLoading}
+        />
+        <StatCard
+          href="/dashboard/managers"
+          title="Verify Managers"
+          value={stats?.pendingManagers}
+          icon={ShieldCheck}
+          iconBgClass="icon-container-primary"
+          iconColorClass="text-blue-600 dark:text-blue-500"
+          delay={25}
           loading={statsLoading}
         />
         <StatCard
@@ -445,6 +465,48 @@ export default function DashboardPage() {
         />
       </div>
 
+      {/* --- Gamification Stats Card --- */}
+      <Card className="animate-fade-in-up opacity-0" style={{ animationDelay: '225ms', animationFillMode: 'forwards' }}>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base font-medium flex items-center gap-2">
+                <Coins className="h-4 w-4 text-amber-500" />
+                Gamification Overview
+              </CardTitle>
+              <CardDescription>Points and redemption activity</CardDescription>
+            </div>
+            <Link href="/dashboard/redemptions">
+              <Button variant="ghost" size="sm" className="h-8 text-xs text-muted-foreground hover:text-foreground">
+                Manage <ArrowRight className="ml-1 h-3 w-3" />
+              </Button>
+            </Link>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-3 gap-4">
+            <div className="text-center p-4 rounded-lg bg-gradient-to-br from-emerald-50 to-emerald-100/50 dark:from-emerald-500/10 dark:to-emerald-500/5">
+              <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
+                {gamificationStats?.total_points_awarded?.toLocaleString() || 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Points Awarded</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-500/10 dark:to-blue-500/5">
+              <p className="text-2xl font-bold text-blue-600 dark:text-blue-400">
+                {gamificationStats?.total_points_redeemed?.toLocaleString() || 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Points Redeemed</p>
+            </div>
+            <div className="text-center p-4 rounded-lg bg-gradient-to-br from-amber-50 to-amber-100/50 dark:from-amber-500/10 dark:to-amber-500/5">
+              <p className="text-2xl font-bold text-amber-600 dark:text-amber-400">
+                {gamificationStats?.pending_redemptions || 0}
+              </p>
+              <p className="text-xs text-muted-foreground mt-1">Pending Redemptions</p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* --- Charts Section --- */}
       <div className="grid gap-6 lg:grid-cols-7">
         <Card className="lg:col-span-4 chart-container animate-fade-in-up opacity-0" style={{ animationDelay: '250ms', animationFillMode: 'forwards' }}>
@@ -464,7 +526,7 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent className="pt-4">
             {chartsLoading ? (
-               <Skeleton className="w-full h-[320px] rounded-lg" />
+              <Skeleton className="w-full h-[320px] rounded-lg" />
             ) : (
               <ResponsiveContainer width="100%" height={320}>
                 <AreaChart data={priceTrendData}>
@@ -577,11 +639,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {listsLoading ? (
-               <div className="space-y-2">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-               </div>
+              <div className="space-y-2">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
             ) : (
               <Table>
                 <TableHeader>
@@ -638,11 +700,11 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             {listsLoading ? (
-               <div className="space-y-2">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-               </div>
+              <div className="space-y-2">
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+                <Skeleton className="h-12 w-full" />
+              </div>
             ) : (
               <Table>
                 <TableHeader>
@@ -705,11 +767,11 @@ export default function DashboardPage() {
         </CardHeader>
         <CardContent>
           {listsLoading ? (
-               <div className="space-y-2">
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-                  <Skeleton className="h-12 w-full" />
-               </div>
+            <div className="space-y-2">
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+              <Skeleton className="h-12 w-full" />
+            </div>
           ) : (
             <Table>
               <TableHeader>
@@ -728,8 +790,8 @@ export default function DashboardPage() {
                       <Badge
                         variant="secondary"
                         className={`text-xs font-normal ${station.is_active
-                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
-                            : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
+                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+                          : 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
                           }`}
                       >
                         {station.is_active ? "Active" : "Pending"}

@@ -22,16 +22,39 @@ export default function LoginPage() {
     e.preventDefault()
     setIsLoading(true)
 
-    const { error } = await signIn(email, password)
-
-    if (error) {
+    // Safety timeout to prevent infinite loading
+    const timeoutId = setTimeout(() => {
+      setIsLoading(false)
       toast({
         variant: "destructive",
-        title: "Login failed",
-        description: error.message,
+        title: "Login Timeout",
+        description: "The login request took too long. Please check your internet connection and try again.",
       })
+    }, 15000)
+
+    try {
+      const { error } = await signIn(email, password)
+
+      clearTimeout(timeoutId)
+
+      if (error) {
+        toast({
+          variant: "destructive",
+          title: "Login failed",
+          description: error.message,
+        })
+      }
+    } catch (err: any) {
+      clearTimeout(timeoutId)
+      console.error("Login error:", err)
+      toast({
+        variant: "destructive",
+        title: "Login Error",
+        description: err?.message || "An unexpected error occurred. Please try again.",
+      })
+    } finally {
+      setIsLoading(false)
     }
-    setIsLoading(false)
   }
 
   return (

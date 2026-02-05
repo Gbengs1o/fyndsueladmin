@@ -98,24 +98,40 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) {
-      return { error }
-    }
+    // Create a promise that rejects after 10 seconds
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error("Login request timed out. Please try again.")), 10000)
+    })
 
-    // Check if user is an admin
-    if (data.user) {
-      const admin = await fetchAdminUser(data.user.id)
-      if (!admin) {
-        // User is not an admin - sign them out and deny access
-        await supabase.auth.signOut()
-        return { error: new Error("Access denied. You are not authorized to access the admin dashboard.") }
+    try {
+      // Race between the actual login and the timeout
+      const { data, error } = await Promise.race([
+        supabase.auth.signInWithPassword({ email, password }),
+        timeoutPromise
+      ]) as { data: any, error: any }
+
+      if (error) {
+        return { error }
       }
-      setAdminUser(admin)
-    }
 
-    router.push("/dashboard")
-    return { error: null }
+      // Check if user is an admin
+      if (data.user) {
+        const admin = await fetchAdminUser(data.user.id)
+
+        if (!admin) {
+          // User is not an admin - sign them out and deny access
+          await supabase.auth.signOut()
+          return { error: new Error("Access denied. You are not authorized to access the admin dashboard.") }
+        }
+        setAdminUser(admin)
+      }
+
+      router.push("/dashboard")
+      return { error: null }
+    } catch (err: any) {
+      console.error("SignIn error:", err)
+      return { error: err }
+    }
   }
 
   const signUp = async (email: string, password: string, fullName: string) => {

@@ -1,15 +1,14 @@
 "use client"
 
-import Link from "next/link"
-import { useEffect } from "react"
-import { useRouter } from "next/navigation"
 import {
+  BadgeCheck,
   BarChart3,
   Bell,
   CheckCheck,
   FileText,
   Flag,
   Fuel,
+  Gamepad2,
   History,
   LayoutDashboard,
   Lightbulb,
@@ -17,21 +16,16 @@ import {
   LogOut,
   Mail,
   Send,
+  ShieldCheck,
   Users,
+  Wallet,
 } from "lucide-react"
+import Link from "next/link"
+import { useRouter } from "next/navigation"
+import { useEffect } from "react"
 
-import {
-  SidebarProvider,
-  Sidebar,
-  SidebarHeader,
-  SidebarContent,
-  SidebarMenu,
-  SidebarMenuItem,
-  SidebarMenuButton,
-  SidebarInset,
-  SidebarTrigger,
-  SidebarFooter,
-} from "@/components/ui/sidebar"
+import { Logo } from "@/components/logo"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import {
   DropdownMenu,
@@ -41,18 +35,32 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-import { Logo } from "@/components/logo"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { usePathname } from "next/navigation"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
 import { useAuth } from "@/lib/auth-context"
+import { usePathname } from "next/navigation"
 
 const navItems = [
   { href: "/dashboard", icon: LayoutDashboard, label: "Dashboard" },
+  { href: "/dashboard/prices", icon: BadgeCheck, label: "Official Prices" },
   { href: "/dashboard/stations", icon: Fuel, label: "Station Management" },
   { href: "/dashboard/suggested-stations", icon: Lightbulb, label: "Suggested Stations" },
   { href: "/dashboard/moderation", icon: CheckCheck, label: "Price Moderation" },
   { href: "/dashboard/flags", icon: Flag, label: "Flagged Content" },
   { href: "/dashboard/users", icon: Users, label: "User Moderation" },
+  { href: "/dashboard/gamification", icon: Gamepad2, label: "Gamification" },
+  { href: "/dashboard/redemptions", icon: Wallet, label: "Redemptions" },
+  { href: "/dashboard/managers", icon: ShieldCheck, label: "Manager Management" },
   { href: "/dashboard/broadcast", icon: Mail, label: "Broadcast" },
   { href: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/dashboard/reports", icon: FileText, label: "Report Generation" },
