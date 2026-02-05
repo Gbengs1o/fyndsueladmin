@@ -1,0 +1,43 @@
+# .easignore
+
+# This file is like .gitignore, but for eas-cli.
+# It is used to ignore files when uploading the project to EAS Build.
+
+# node_modules
+node_modules/
+
+# Git
+.git/
+
+# Expo
+.expo/
+
+# IDE / Editor specific
+.vscode/
+.idea/
+
+# Native build artifacts
+android/build/
+android/app/build/
+ios/build/
+
+# Previous build outputs
+*.apk
+*.aab
+*.ipa
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Common temporary files
+.DS_Store
+Thumbs.db
+
+# -----------------------------------------------------------------
+# ADD THESE LINES TO FORCE PREBUILD ON EAS AND FIX THE DOCTOR ERROR
+# -----------------------------------------------------------------
+/android
+/ios

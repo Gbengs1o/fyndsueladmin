@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "232668397571",
+    "project_id": "gaspricenigeria",
+    "storage_bucket": "gaspricenigeria.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:232668397571:android:e3a1fd18581166e8e34e36",
+        "android_client_info": {
+          "package_name": "com.yourname.fyndfuel"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAiwcJNtRfA-YKY6V8VkH_uiSGzzsl3qFs"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
