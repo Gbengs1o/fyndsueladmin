@@ -48,56 +48,57 @@
 
 :root {
   --radius: 0.5rem;
-  
+
   /* Light Theme */
   /* Background: #FFFFFF */
   --background: #FFFFFF;
   /* Primary Text: #121212 */
   --foreground: #121212;
-  
+
   /* Card: Default White in Light */
   --card: #FFFFFF;
   --card-foreground: #121212;
   --popover: #FFFFFF;
   --popover-foreground: #121212;
-  
-  /* Primary: #5C0CA7 */
-  --primary: #5C0CA7;
-  --primary-foreground: #FFFFFF;
-  
-  /* Secondary: #F4F4F5 (Zinc-100 fallback) */
+
+  /* Primary: #EDAE10 (Gold) */
+  --primary: #EDAE10;
+  --primary-foreground: #121212;
+  /* Black text on gold for contrast */
+
+  /* Secondary: #F4F4F5 */
   --secondary: #F4F4F5;
   --secondary-foreground: #121212;
-  
-  /* Secondary Text: #B8B8B8 -> Muted Foreground */
+
+  /* Secondary Text: #B8B8B8 */
   --muted: #F4F4F5;
   --muted-foreground: #B8B8B8;
-  
+
   --accent: #F4F4F5;
   --accent-foreground: #121212;
-  
+
   --destructive: #EF4444;
   --destructive-foreground: #FAFAFA;
-  
+
   /* Card Border: #DFDFDF */
   --border: #DFDFDF;
   --input: #DFDFDF;
-  --ring: #5C0CA7;
-  
-  --chart-1: #5C0CA7;
-  --chart-2: #892CDC;
-  --chart-3: #BC6FF6;
-  --chart-4: #E9B5FD;
-  --chart-5: #F9E8FF;
-  
+  --ring: #EDAE10;
+
+  --chart-1: #EDAE10;
+  --chart-2: #F0BE35;
+  --chart-3: #F4CD5B;
+  --chart-4: #F7DC81;
+  --chart-5: #FAEB9A;
+
   --sidebar: #FFFFFF;
   --sidebar-foreground: #121212;
-  --sidebar-primary: #5C0CA7;
-  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-primary: #EDAE10;
+  --sidebar-primary-foreground: #121212;
   --sidebar-accent: #F4F4F5;
   --sidebar-accent-foreground: #121212;
   --sidebar-border: #DFDFDF;
-  --sidebar-ring: #5C0CA7;
+  --sidebar-ring: #EDAE10;
 }
 
 .dark {
@@ -106,56 +107,57 @@
   --background: #121212;
   /* Primary Text: #E5E5E5 */
   --foreground: #E5E5E5;
-  
+
   /* Card Background: #1E1E1E */
   --card: #1E1E1E;
   --card-foreground: #E5E5E5;
   --popover: #1E1E1E;
   --popover-foreground: #E5E5E5;
-  
-  /* Primary: #5C0CA7 (Keep same or adjust for dark mode?) Logo is #5C0CA7, assuming same */
-  --primary: #5C0CA7;
-  --primary-foreground: #FFFFFF;
-  
+
+  /* Primary: #EDAE10 (Gold) */
+  --primary: #EDAE10;
+  --primary-foreground: #121212;
+
   /* Secondary: #27272A (Zinc-800 fallback) */
   --secondary: #27272A;
   --secondary-foreground: #FAFAFA;
-  
+
   /* Secondary Text: #8A8A8A */
   --muted: #27272A;
   --muted-foreground: #8A8A8A;
-  
+
   --accent: #27272A;
   --accent-foreground: #FAFAFA;
-  
+
   --destructive: #7F1D1D;
   --destructive-foreground: #FAFAFA;
-  
+
   /* Card Border: #333333 */
   --border: #333333;
   --input: #333333;
-  --ring: #5C0CA7;
-  
-  --chart-1: #5C0CA7;
-  --chart-2: #892CDC;
-  --chart-3: #BC6FF6;
-  --chart-4: #E9B5FD;
-  --chart-5: #F9E8FF;
-  
+  --ring: #EDAE10;
+
+  --chart-1: #EDAE10;
+  --chart-2: #F0BE35;
+  --chart-3: #F4CD5B;
+  --chart-4: #F7DC81;
+  --chart-5: #FAEB9A;
+
   --sidebar: #1E1E1E;
   --sidebar-foreground: #E5E5E5;
-  --sidebar-primary: #5C0CA7;
-  --sidebar-primary-foreground: #FFFFFF;
+  --sidebar-primary: #EDAE10;
+  --sidebar-primary-foreground: #121212;
   --sidebar-accent: #27272A;
   --sidebar-accent-foreground: #FAFAFA;
   --sidebar-border: #333333;
-  --sidebar-ring: #5C0CA7;
+  --sidebar-ring: #EDAE10;
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
+
   body {
     @apply bg-background text-foreground;
   }
