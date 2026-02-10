@@ -2,318 +2,136 @@
 
 import { useState, useEffect } from 'react'
 import { supabase } from '@/lib/supabase'
+import { Header } from '@/components/layout/Header'
+import { Loader2 } from 'lucide-react'
+import { Card, CardContent } from '@/components/ui/card'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Button } from '@/components/ui/button'
-import { Input } from '@/components/ui/input'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Fuel, Zap, Flame, Save, Loader2 } from 'lucide-react'
-import { cn } from '@/lib/utils'
+import { PriceUpdater } from '@/components/features/PriceUpdater'
+import { LeaderboardList } from '@/components/features/LeaderboardList'
 
 export default function DashboardPage() {
     const [loading, setLoading] = useState(true)
-    const [saving, setSaving] = useState(false)
+    const [profile, setProfile] = useState<any>(null)
     const [station, setStation] = useState<any>(null)
-    const [groundTruth, setGroundTruth] = useState<any>(null)
-    const [prices, setPrices] = useState({
-        pms: 0,
-        ago: 0,
-        dpk: 0,
-        lpg: 0
-    })
 
     useEffect(() => {
-        async function fetchStationData() {
+        async function fetchData() {
             const { data: { user } } = await supabase.auth.getUser()
             if (!user) return
 
-            const { data: profile } = await supabase
+            const { data: profileData } = await supabase
                 .from('manager_profiles')
                 .select('*, stations(*)')
                 .eq('id', user.id)
                 .single()
 
-            if (profile && profile.stations) {
-                setStation(profile.stations)
-                setPrices({
-                    pms: profile.stations.official_price_pms || 0,
-                    ago: profile.stations.official_price_ago || 0,
-                    dpk: profile.stations.official_price_dpk || 0,
-                    lpg: profile.stations.official_price_lpg || 0,
-                })
-
-                // Fetch latest ground truth
-                const { data: reports } = await supabase
-                    .from('price_reports')
-                    .select('queue_length, meter_accuracy, availability_status, created_at')
-                    .eq('station_id', profile.stations.id)
-                    .order('created_at', { ascending: false })
-                    .limit(1)
-
-                if (reports && reports.length > 0) {
-                    setGroundTruth(reports[0])
-                }
+            setProfile(profileData)
+            if (profileData?.stations) {
+                setStation(profileData.stations)
             }
+
             setLoading(false)
         }
-        fetchStationData()
+        fetchData()
     }, [])
 
-    const handleSave = async () => {
-        setSaving(true)
-        try {
-            // According to instructions, we UPSERT to official_prices
-            // and it syncs to stations.
-            // We need to know the brand and state of the station to target the right official price.
-
-            const { error } = await supabase
-                .from('official_prices')
-                .upsert({
-                    state: station.state,
-                    brand: station.brand || 'all',
-                    pms_price: prices.pms,
-                    ago_price: prices.ago,
-                    dpk_price: prices.dpk,
-                    lpg_price: prices.lpg,
-                    updated_at: new Date().toISOString()
-                }, {
-                    onConflict: 'state,brand' // Assuming these are the unique keys for official prices
-                })
-
-            if (error) throw error
-
-            alert('Prices updated successfully!')
-        } catch (error: any) {
-            alert(error.message || 'Failed to update prices')
-        } finally {
-            setSaving(false)
-        }
-    }
-
     if (loading) return (
-        <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex items-center justify-center min-h-screen bg-background">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
         </div>
     )
 
     return (
-        <div className="space-y-8">
-            <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-bold text-foreground">Price Updater</h1>
-                <p className="text-muted-foreground">Update your station's prices in real-time.</p>
-            </div>
+        <div className="min-h-screen bg-background pb-32">
+            <Header user={profile} />
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                {/* PMS Card */}
-                <Card className="bg-card border-border overflow-hidden hover:border-emerald-500/50 transition-colors">
-                    <CardHeader className="bg-emerald-500/10 border-b border-border pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-emerald-500 rounded-lg">
-                                <Fuel className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-card-foreground text-lg">PMS (Petrol)</CardTitle>
-                                <CardDescription className="text-emerald-500 font-medium">Active Price</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="pt-6">
+            <main className="px-4 space-y-6">
+                {/* Summary Circles/Top Leaders */}
+                <div className="flex items-center justify-around py-4">
+                    {/* Mock Leaders for Visuals */}
+                    <div className="flex flex-col items-center gap-2">
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">₦</span>
-                            <Input
-                                type="number"
-                                value={prices.pms}
-                                onChange={(e) => setPrices({ ...prices, pms: parseFloat(e.target.value) })}
-                                className="bg-secondary/50 border-input h-20 pl-12 text-3xl font-bold text-foreground focus:ring-emerald-500"
-                            />
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary to-purple-700 p-[2px] shadow-lg shadow-primary/20">
+                                <div className="w-full h-full rounded-full bg-card flex items-center justify-center border-2 border-background">
+                                    <span className="font-bold text-primary">OG</span>
+                                </div>
+                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-card rounded-full flex items-center justify-center text-xs font-bold shadow-sm">2</div>
                         </div>
-                    </CardContent>
-                </Card>
+                        <div className="text-center">
+                            <p className="text-xs font-bold text-foreground">OGUNKOY...</p>
+                            <p className="text-[10px] text-muted-foreground">2 reports</p>
+                        </div>
+                    </div>
 
-                {/* AGO Card */}
-                <Card className="bg-card border-border overflow-hidden hover:border-amber-500/50 transition-colors">
-                    <CardHeader className="bg-amber-500/10 border-b border-border pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-amber-500 rounded-lg">
-                                <Zap className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-card-foreground text-lg">AGO (Diesel)</CardTitle>
-                                <CardDescription className="text-amber-500 font-medium">Active Price</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="pt-6">
+                    <div className="flex flex-col items-center gap-2 scale-110">
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">₦</span>
-                            <Input
-                                type="number"
-                                value={prices.ago}
-                                onChange={(e) => setPrices({ ...prices, ago: parseFloat(e.target.value) })}
-                                className="bg-secondary/50 border-input h-20 pl-12 text-3xl font-bold text-foreground focus:ring-amber-500"
-                            />
+                            <div className="w-20 h-20 rounded-full bg-gradient-to-br from-primary to-violet-500 p-[2px] shadow-xl shadow-primary/30">
+                                <div className="w-full h-full rounded-full bg-primary flex items-center justify-center border-4 border-background text-primary-foreground text-2xl font-bold">
+                                    G
+                                </div>
+                            </div>
+                            <div className="absolute 0 bottom-0 right-0 w-7 h-7 bg-card rounded-full flex items-center justify-center text-xs font-bold shadow-sm border border-background">1</div>
                         </div>
-                    </CardContent>
-                </Card>
+                        <div className="text-center">
+                            <p className="text-sm font-bold text-foreground">Ggg</p>
+                            <p className="text-xs text-muted-foreground font-medium">3 reports</p>
+                        </div>
+                    </div>
 
-                {/* LPG Card */}
-                <Card className="bg-card border-border overflow-hidden hover:border-blue-500/50 transition-colors">
-                    <CardHeader className="bg-blue-500/10 border-b border-border pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-blue-500 rounded-lg">
-                                <Flame className="w-5 h-5 text-white" />
-                            </div>
-                            <div>
-                                <CardTitle className="text-card-foreground text-lg">LPG (Gas)</CardTitle>
-                                <CardDescription className="text-blue-500 font-medium">Active Price</CardDescription>
-                            </div>
-                        </div>
-                    </CardHeader>
-                    <CardContent className="pt-6">
+                    <div className="flex flex-col items-center gap-2">
                         <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">₦</span>
-                            <Input
-                                type="number"
-                                value={prices.lpg}
-                                onChange={(e) => setPrices({ ...prices, lpg: parseFloat(e.target.value) })}
-                                className="bg-secondary/50 border-input h-20 pl-12 text-3xl font-bold text-foreground focus:ring-blue-500"
-                            />
-                        </div>
-                    </CardContent>
-                </Card>
-
-                {/* DPK Card */}
-                <Card className="bg-card border-border overflow-hidden hover:border-purple-500/50 transition-colors">
-                    <CardHeader className="bg-purple-500/10 border-b border-border pb-4">
-                        <div className="flex items-center gap-3">
-                            <div className="p-2 bg-purple-500 rounded-lg">
-                                <Fuel className="w-5 h-5 text-white" />
+                            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-primary/80 to-pink-500 p-[2px] shadow-lg shadow-pink-500/20">
+                                <div className="w-full h-full rounded-full bg-card flex items-center justify-center border-2 border-background">
+                                    <span className="font-bold text-primary">AF</span>
+                                </div>
                             </div>
-                            <div>
-                                <CardTitle className="text-card-foreground text-lg">DPK (Kerosene)</CardTitle>
-                                <CardDescription className="text-purple-500 font-medium">Active Price</CardDescription>
-                            </div>
+                            <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-card rounded-full flex items-center justify-center text-xs font-bold shadow-sm">3</div>
                         </div>
-                    </CardHeader>
-                    <CardContent className="pt-6">
-                        <div className="relative">
-                            <span className="absolute left-4 top-1/2 -translate-y-1/2 text-2xl font-bold text-muted-foreground">₦</span>
-                            <Input
-                                type="number"
-                                value={prices.dpk}
-                                onChange={(e) => setPrices({ ...prices, dpk: parseFloat(e.target.value) })}
-                                className="bg-secondary/50 border-input h-20 pl-12 text-3xl font-bold text-foreground focus:ring-purple-500"
-                            />
+                        <div className="text-center">
+                            <p className="text-xs font-bold text-foreground">Akinpelu Faith</p>
+                            <p className="text-[10px] text-muted-foreground">1 reports</p>
                         </div>
-                    </CardContent>
-                </Card>
-            </div>
+                    </div>
+                </div>
 
-            {/* Ground Truth Section */}
-            <div className="flex flex-col gap-2">
-                <h2 className="text-2xl font-bold text-foreground">Ground Truth</h2>
-                <p className="text-muted-foreground">Live feedback from your customers.</p>
-            </div>
+                {/* All Ranks Header */}
+                <div>
+                    <h2 className="text-xl font-bold text-foreground">All Ranks</h2>
+                </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                <Card className="bg-card border-border">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Queue Length</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-card-foreground capitalize">{groundTruth?.queue_length || 'No Data'}</div>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            {groundTruth ? `Reported ${new Date(groundTruth.created_at).toLocaleTimeString()}` : 'Waiting for reports'}
-                        </p>
-                    </CardContent>
-                </Card>
-                <Card className="bg-card border-border">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Meter Accuracy</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold text-card-foreground">
-                            {groundTruth?.meter_accuracy ? `${groundTruth.meter_accuracy}/5` : 'No Data'}
+                {/* Price Updater Card */}
+                {station && (
+                    <PriceUpdater
+                        stationId={station.id}
+                        initialPrices={{
+                            pms: station.price_pms || 0,
+                            ago: station.price_ago || 0,
+                            dpk: station.price_dpk || 0
+                        }}
+                    />
+                )}
+
+                {/* Rank List */}
+                <LeaderboardList />
+
+                {/* Test Ad Banner */}
+                <div className="mt-8 rounded-xl bg-card overflow-hidden border border-border/50 relative">
+                    <div className="absolute top-2 left-2 bg-black/40 px-2 py-0.5 rounded text-[10px] text-white backdrop-blur-sm">SPONSORED</div>
+                    <div className="p-4 pt-8">
+                        <div className="flex items-center justify-between mb-2">
+                            <h3 className="font-bold text-sm">Test Ad (Browser Agent Manual)</h3>
+                            <Button size="sm" className="h-7 text-xs bg-emerald-500 hover:bg-emerald-600 text-white rounded-full">Learn More</Button>
                         </div>
-                        <div className="flex gap-1 mt-1">
-                            {[1, 2, 3, 4, 5].map((star) => (
-                                <div
-                                    key={star}
-                                    className={`w-1.5 h-1.5 rounded-full ${star <= (groundTruth?.meter_accuracy || 0) ? 'bg-primary' : 'bg-muted'}`}
-                                />
-                            ))}
+                        <div className="bg-muted rounded-lg h-32 w-full flex items-center justify-center relative overflow-hidden">
+                            {/* Placeholder for ad image */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-emerald-900/20 to-blue-900/20" />
+                            <span className="text-muted-foreground/50 text-xs text-center px-4">Ad Content Visualization</span>
                         </div>
-                    </CardContent>
-                </Card>
-                <Card className="bg-card border-border">
-                    <CardHeader className="pb-2">
-                        <CardTitle className="text-sm font-medium text-muted-foreground">Availability</CardTitle>
-                    </CardHeader>
-                    <CardContent>
-                        <div className={`text-2xl font-bold capitalize ${groundTruth?.availability_status === 'available' ? 'text-primary' : 'text-destructive'}`}>
-                            {groundTruth?.availability_status?.replace('_', ' ') || 'Unknown'}
-                        </div>
-                    </CardContent>
-                </Card>
-            </div>
-
-            {/* Promotional Tools */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <Card className={`bg-card border-border transition-colors ${station?.is_flash_sale ? 'border-primary bg-primary/10' : ''}`}>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-card-foreground text-lg flex items-center justify-between">
-                            Flash Sale
-                            <div className={`w-3 h-3 rounded-full ${station?.is_flash_sale ? 'bg-primary shadow-[0_0_10px_var(--primary)]' : 'bg-muted'}`} />
-                        </CardTitle>
-                        <CardDescription className="text-muted-foreground">Boost visibility on the map</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Button
-                            variant={station?.is_flash_sale ? "secondary" : "outline"}
-                            className="w-full font-bold"
-                            onClick={async () => {
-                                const newVal = !station?.is_flash_sale
-                                const { error } = await supabase.from('stations').update({ is_flash_sale: newVal }).eq('id', station.id)
-                                if (!error) setStation({ ...station, is_flash_sale: newVal })
-                            }}
-                        >
-                            {station?.is_flash_sale ? 'Active' : 'Enable Flash Sale'}
-                        </Button>
-                    </CardContent>
-                </Card>
-
-                <Card className={`bg-card border-border transition-colors ${station?.is_out_of_stock ? 'border-destructive bg-destructive/10' : ''}`}>
-                    <CardHeader className="pb-3">
-                        <CardTitle className="text-card-foreground text-lg flex items-center justify-between">
-                            Out of Fuel
-                            <div className={`w-3 h-3 rounded-full ${station?.is_out_of_stock ? 'bg-destructive shadow-[0_0_10px_var(--destructive)]' : 'bg-muted'}`} />
-                        </CardTitle>
-                        <CardDescription className="text-muted-foreground">Mark station as empty</CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                        <Button
-                            variant={station?.is_out_of_stock ? "destructive" : "outline"}
-                            className="w-full font-bold hover:bg-red-900 border-red-900 text-red-500 hover:text-red-100"
-                            onClick={async () => {
-                                const newVal = !station?.is_out_of_stock
-                                const { error } = await supabase.from('stations').update({ is_out_of_stock: newVal }).eq('id', station.id)
-                                if (!error) setStation({ ...station, is_out_of_stock: newVal })
-                            }}
-                        >
-                            {station?.is_out_of_stock ? 'Marked as Out of Stock' : 'Mark Out of Stock'}
-                        </Button>
-                    </CardContent>
-                </Card>
-            </div>
-
-            <div className="fixed bottom-24 left-0 right-0 p-4 md:static md:p-0 z-30">
-                <Button
-                    onClick={handleSave}
-                    disabled={saving}
-                    className="w-full bg-primary hover:bg-primary/90 text-primary-foreground font-bold py-8 text-xl rounded-2xl shadow-xl shadow-primary/20 transition-all active:scale-95 flex items-center justify-center gap-3"
-                >
-                    {saving ? <Loader2 className="w-6 h-6 animate-spin" /> : <Save className="w-6 h-6" />}
-                    {saving ? 'Saving Changes...' : 'Save Price Changes'}
-                </Button>
-            </div>
+                    </div>
+                </div>
+            </main>
         </div>
     )
 }

@@ -17,7 +17,7 @@ export default function InsightsPage() {
 
             const { data: profile } = await supabase
                 .from('manager_profiles')
-                .select('*, stations(*)')
+                .select('*, stations(id, name, state, official_price_pms)')
                 .eq('id', user.id)
                 .single()
 
