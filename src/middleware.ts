@@ -71,6 +71,40 @@ export async function middleware(request: NextRequest) {
             url.pathname = '/dashboard'
             return NextResponse.redirect(url)
         }
+
+        // --- Manager Registration Flow ---
+        const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', user.id)
+            .single()
+
+        // 3. Force Station Registration if role is 'manager' but no profile exists
+        if (profile?.role === 'manager' && !pathname.startsWith('/auth/register-station')) {
+            const { data: managerProfile } = await supabase
+                .from('manager_profiles')
+                .select('verification_status')
+                .eq('id', user.id)
+                .single()
+
+            // If they are a manager but haven't registered a station yet
+            if (!managerProfile) {
+                url.pathname = '/auth/register-station'
+                return NextResponse.redirect(url)
+            }
+
+            // If they are pending approval
+            if (managerProfile.verification_status === 'pending' && !pathname.startsWith('/dashboard/pending-approval')) {
+                url.pathname = '/dashboard/pending-approval'
+                return NextResponse.redirect(url)
+            }
+
+            // If they are fully approved, they shouldn't be on the pending page
+            if (managerProfile.verification_status === 'verified' && pathname.startsWith('/dashboard/pending-approval')) {
+                url.pathname = '/dashboard'
+                return NextResponse.redirect(url)
+            }
+        }
     }
 
     return response

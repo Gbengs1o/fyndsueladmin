@@ -32,17 +32,40 @@ export default function LoginPage() {
 
             if (error) throw error
 
-            // Check verification status
+            if (error) throw error
+
+            const user = data.user
+
+            // 1. Check if user has 'manager' role in profiles
             const { data: profile } = await supabase
-                .from('manager_profiles')
-                .select('verification_status')
-                .eq('id', data.user.id)
+                .from('profiles')
+                .select('role')
+                .eq('id', user.id)
                 .single()
 
-            if (profile?.verification_status === 'verified') {
+            // If not a manager, upgrade them to 'manager' role
+            if (profile?.role !== 'manager') {
+                await supabase
+                    .from('profiles')
+                    .update({ role: 'manager' })
+                    .eq('id', user.id)
+            }
+
+            // 2. Check Manager Profile Status
+            const { data: managerProfile } = await supabase
+                .from('manager_profiles')
+                .select('verification_status')
+                .eq('id', user.id)
+                .single()
+
+            if (!managerProfile) {
+                router.push('/auth/register-station')
+            } else if (managerProfile.verification_status === 'pending') {
+                router.push('/dashboard/pending-approval')
+            } else if (managerProfile.verification_status === 'verified') {
                 router.push('/dashboard')
             } else {
-                router.push('/auth/verify')
+                setError('Your account has been rejected or suspended.')
             }
         } catch (err: any) {
             setError(err.message || 'Invalid login credentials')
