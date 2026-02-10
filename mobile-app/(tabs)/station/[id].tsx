@@ -23,7 +23,19 @@ function calculateTravelTime(distanceMeters: number): { walk: string; run: strin
 function formatTimestamp(dateString: string): string { const date = new Date(dateString); const now = new Date(); const hours = Math.floor((now.getTime() - date.getTime()) / 1000 / 3600); if (hours < 1) return 'Updated just now'; if (hours < 24) return `Updated ${hours}h ago`; return `On ${date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}`; }
 function normalizeFuelName(dbName: string): string { const name = dbName.toLowerCase(); if (name.includes('pms') || name.includes('petrol')) return 'Petrol'; if (name.includes('gas')) return 'Gas'; if (name.includes('diesel') || name.includes('ago')) return 'Diesel'; if (name.includes('kerosine') || name.includes('dpk')) return 'Kerosine'; return dbName.charAt(0).toUpperCase() + dbName.slice(1); }
 
-type StationDetails = { id: number; name: string; latitude: number; longitude: number; brand: string | null; amenities: string[] | null; payment_methods: string[] | null; logo_url: string | null; };
+type StationDetails = {
+    id: number;
+    name: string;
+    latitude: number;
+    longitude: number;
+    brand: string | null;
+    amenities: string[] | null;
+    payment_methods: string[] | null;
+    logo_url: string | null;
+    price_pms: number | null;
+    price_ago: number | null;
+    price_dpk: number | null;
+};
 type PriceReport = { id: number; user_id: string; fuel_type: string; price: number | null; notes: string | null; rating: number | null; created_at: string; profiles: { full_name: string | null; avatar_url?: string; } | null; other_fuel_prices: { [key: string]: number } | null; amenities_update: { add: string[] } | null; payment_methods_update: { add: string[] } | null; };
 type Coords = { latitude: number; longitude: number; };
 type PriceHistoryEntry = { price: number; created_at: string };
@@ -418,7 +430,39 @@ export default function StationProfileScreen() {
                     </Pressable>
                 </View>
 
-                <View style={styles.priceReportContainer}><View style={styles.priceReportHeader}><Text style={styles.priceReportTitle}>Station Price</Text></View>{ALL_FUEL_TYPES.map(fuel => { const history = priceHistories.get(fuel) || []; const currentIndex = historyIndex[fuel] || 0; const currentData = history[currentIndex]; const isNewerDisabled = currentIndex === 0; const isOlderDisabled = currentIndex >= history.length - 1; return (<View key={fuel} style={styles.priceRow}><Text style={styles.fuelNameText}>{fuel}</Text><View style={styles.priceInteractionWrapper}><Pressable onPress={() => handleHistoryNavigation(fuel, 'newer')} disabled={isNewerDisabled} style={styles.arrowButton}><FontAwesome name="chevron-left" size={16} color={isNewerDisabled ? colors.disabled : colors.primary} /></Pressable><View style={styles.priceInfoBox}>{currentData ? (<><Text style={styles.priceValueText}>₦{currentData.price}/{fuel === 'Gas' ? 'KG' : 'L'}</Text><Text style={styles.priceTimestampText}>{formatTimestamp(currentData.created_at)}</Text></>) : <Text style={styles.priceValueText}>N/A</Text>}</View><Pressable onPress={() => handleHistoryNavigation(fuel, 'older')} disabled={isOlderDisabled} style={styles.arrowButton}><FontAwesome name="chevron-right" size={16} color={isOlderDisabled ? colors.disabled : colors.primary} /></Pressable></View></View>); })}<Pressable style={[styles.reportPriceButton, isCheckingLocation && styles.buttonDisabled]} onPress={handleReportPress} disabled={isCheckingLocation}>{isCheckingLocation ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.reportPriceButtonText}>Report Price</Text>}</Pressable></View>
+                {/* Official Prices Section */}
+                <View style={[styles.cardContainer, { borderColor: colors.primary, borderWidth: 1, backgroundColor: colors.primary + '10' }]}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 15, justifyContent: 'space-between' }}>
+                        <Text style={[styles.cardTitle, { marginBottom: 0, borderBottomWidth: 0, color: colors.primary }]}>Official Prices</Text>
+                        <FontAwesome name="check-circle" size={16} color={colors.primary} />
+                    </View>
+
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', gap: 10 }}>
+                        <View style={{ flex: 1, backgroundColor: colors.background, padding: 10, borderRadius: 8, alignItems: 'center', elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 }}>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Petrol</Text>
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
+                                {station.price_pms ? `₦${station.price_pms}` : 'N/A'}
+                            </Text>
+                        </View>
+                        <View style={{ flex: 1, backgroundColor: colors.background, padding: 10, borderRadius: 8, alignItems: 'center', elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 }}>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Diesel</Text>
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
+                                {station.price_ago ? `₦${station.price_ago}` : 'N/A'}
+                            </Text>
+                        </View>
+                        <View style={{ flex: 1, backgroundColor: colors.background, padding: 10, borderRadius: 8, alignItems: 'center', elevation: 2, shadowColor: "#000", shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 }}>
+                            <Text style={{ fontSize: 12, color: colors.textSecondary, marginBottom: 4 }}>Gas</Text>
+                            <Text style={{ fontSize: 18, fontWeight: 'bold', color: colors.text }}>
+                                {station.price_dpk ? `₦${station.price_dpk}` : 'N/A'}
+                            </Text>
+                        </View>
+                    </View>
+                    <Text style={{ textAlign: 'center', fontSize: 10, color: colors.textSecondary, marginTop: 10 }}>
+                        <FontAwesome name="info-circle" size={10} /> Verified by Station Manager
+                    </Text>
+                </View>
+
+                <View style={styles.priceReportContainer}><View style={styles.priceReportHeader}><Text style={styles.priceReportTitle}>User Reports</Text></View>{ALL_FUEL_TYPES.map(fuel => { const history = priceHistories.get(fuel) || []; const currentIndex = historyIndex[fuel] || 0; const currentData = history[currentIndex]; const isNewerDisabled = currentIndex === 0; const isOlderDisabled = currentIndex >= history.length - 1; return (<View key={fuel} style={styles.priceRow}><Text style={styles.fuelNameText}>{fuel}</Text><View style={styles.priceInteractionWrapper}><Pressable onPress={() => handleHistoryNavigation(fuel, 'newer')} disabled={isNewerDisabled} style={styles.arrowButton}><FontAwesome name="chevron-left" size={16} color={isNewerDisabled ? colors.disabled : colors.primary} /></Pressable><View style={styles.priceInfoBox}>{currentData ? (<><Text style={styles.priceValueText}>₦{currentData.price}/{fuel === 'Gas' ? 'KG' : 'L'}</Text><Text style={styles.priceTimestampText}>{formatTimestamp(currentData.created_at)}</Text></>) : <Text style={styles.priceValueText}>N/A</Text>}</View><Pressable onPress={() => handleHistoryNavigation(fuel, 'older')} disabled={isOlderDisabled} style={styles.arrowButton}><FontAwesome name="chevron-right" size={16} color={isOlderDisabled ? colors.disabled : colors.primary} /></Pressable></View></View>); })}<Pressable style={[styles.reportPriceButton, isCheckingLocation && styles.buttonDisabled]} onPress={handleReportPress} disabled={isCheckingLocation}>{isCheckingLocation ? <ActivityIndicator color={colors.primaryText} /> : <Text style={styles.reportPriceButtonText}>Report Price</Text>}</Pressable></View>
 
                 {nativeAd && (
                     <View style={{ marginBottom: 20 }}>
