@@ -98,17 +98,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const signIn = async (email: string, password: string) => {
-    // Create a promise that rejects after 10 seconds
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error("Login request timed out. Please try again.")), 30000)
-    })
-
     try {
-      // Race between the actual login and the timeout
-      const { data, error } = await Promise.race([
-        supabase.auth.signInWithPassword({ email, password }),
-        timeoutPromise
-      ]) as { data: any, error: any }
+      // Direct Supabase call without artificial timeout
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password })
 
       if (error) {
         return { error }
