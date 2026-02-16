@@ -60,14 +60,20 @@ export async function middleware(request: NextRequest) {
 
     // 1. If not logged in and trying to access protected routes
     if (!user && (pathname.startsWith('/dashboard') || pathname.startsWith('/auth/verify'))) {
-        url.pathname = '/auth/login'
+        url.pathname = '/login'
+        return NextResponse.redirect(url)
+    }
+
+    // Redirect legacy /auth/login to /login
+    if (pathname === '/auth/login') {
+        url.pathname = '/login'
         return NextResponse.redirect(url)
     }
 
     // 2. If logged in
     if (user) {
         // Redirect away from auth pages if logged in
-        if (pathname === '/auth/login' || pathname === '/auth/signup') {
+        if (pathname === '/login' || pathname === '/auth/login' || pathname === '/auth/signup') {
             url.pathname = '/dashboard'
             return NextResponse.redirect(url)
         }
