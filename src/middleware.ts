@@ -72,7 +72,8 @@ export async function middleware(request: NextRequest) {
             return NextResponse.redirect(url)
         }
 
-        // --- Manager Registration Flow ---
+        // --- Manager Registration Flow - DISABLED PERMANENTLY ---
+        /*
         const { data: profile } = await supabase
             .from('profiles')
             .select('*')
@@ -105,6 +106,7 @@ export async function middleware(request: NextRequest) {
                 return NextResponse.redirect(url)
             }
         }
+        */
     }
 
     return response
