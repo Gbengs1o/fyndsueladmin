@@ -30,7 +30,7 @@ export default function LoginPage() {
         title: "Login Timeout",
         description: "The login request took too long. Please check your internet connection and try again.",
       })
-    }, 15000)
+    }, 35000)
 
     try {
       const { error } = await signIn(email, password)
