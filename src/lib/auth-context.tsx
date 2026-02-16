@@ -116,12 +116,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       // Check if user is an admin
       if (data.user) {
+        // Strict Admin Check: Only users in the 'admin_users' table are allowed.
+        // We don't care if they are also a manager or have other roles.
+        // If they are not in 'admin_users', they are NOT an admin.
         const admin = await fetchAdminUser(data.user.id)
 
         if (!admin) {
           // User is not an admin - sign them out and deny access
+          // ensuring that ONLY admins can access this dashboard.
           await supabase.auth.signOut()
-          return { error: new Error("Access denied. You are not authorized to access the admin dashboard.") }
+          return { error: new Error("Access denied. This dashboard is for Administrators only.") }
         }
         setAdminUser(admin)
       }
