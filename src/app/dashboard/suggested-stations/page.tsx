@@ -112,7 +112,6 @@ export default function SuggestedStationsPage() {
   const { isLoading: authLoading } = useAuth()
   const [activeTab, setActiveTab] = useState("pending")
   const [suggestions, setSuggestions] = useState<SuggestedStation[]>([])
-  const [filteredSuggestions, setFilteredSuggestions] = useState<SuggestedStation[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState("")
   const { toast } = useToast()
@@ -130,71 +129,91 @@ export default function SuggestedStationsPage() {
 
   const apiKey = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
 
-  // Fetch all suggestions (not just pending)
+  // Separate fetch for stats (counts)
+  const fetchStats = useCallback(async () => {
+    try {
+      const [pending, approved, rejected] = await Promise.all([
+        supabase.from('suggested_fuel_stations').select('id', { count: 'exact', head: true }).eq('status', 'pending'),
+        supabase.from('suggested_fuel_stations').select('id', { count: 'exact', head: true }).eq('status', 'approved'),
+        supabase.from('suggested_fuel_stations').select('id', { count: 'exact', head: true }).eq('status', 'rejected')
+      ])
+
+      setStats({
+        pending: pending.count || 0,
+        approved: approved.count || 0,
+        rejected: rejected.count || 0
+      })
+    } catch (error) {
+      console.error("Error fetching stats:", error)
+    }
+  }, [])
+
+  // Fetch suggestions optimized for active tab
   const fetchSuggestions = useCallback(async () => {
     setIsLoading(true)
 
-    const { data, error } = await supabase
-      .from('suggested_fuel_stations')
-      .select(`
-        id, name, address, status, created_at, latitude, longitude, submitted_by,
-        profiles!suggested_fuel_stations_submitted_by_profiles_fkey(full_name, avatar_url)
-      `)
-      .order('created_at', { ascending: false })
+    try {
+      let query = supabase
+        .from('suggested_fuel_stations')
+        .select(`
+          id, name, address, status, created_at, latitude, longitude, submitted_by,
+          profiles!suggested_fuel_stations_submitted_by_profiles_fkey(full_name, avatar_url)
+        `)
+        .order('created_at', { ascending: false })
+        .limit(50) // Pagination limit
 
-    if (error) {
+      // Filter by active tab status
+      if (activeTab !== 'all') { // Although 'all' isn't a current tab option, handling for robustness
+        query = query.eq('status', activeTab)
+      }
+
+      // If there is a search term, we might need a different query or handle it differently
+      // Ideally search should be server-side too, but for simplicity with tabs:
+      if (searchTerm) {
+        query = query.or(`name.ilike.%${searchTerm}%,address.ilike.%${searchTerm}%`)
+      }
+
+      const { data, error } = await query
+
+      if (error) {
+        throw error
+      } else {
+        const formatted = (data || []).map((s: any) => ({
+          id: s.id,
+          name: s.name,
+          address: s.address,
+          status: s.status,
+          created_at: s.created_at,
+          latitude: s.latitude,
+          longitude: s.longitude,
+          submitted_by: s.submitted_by,
+          full_name: s.profiles?.full_name || null,
+          avatar_url: s.profiles?.avatar_url || null
+        }))
+        setSuggestions(formatted)
+      }
+    } catch (error: any) {
       console.error("Error fetching suggestions:", error.message)
       toast({ variant: "destructive", title: "Error", description: error.message })
       setSuggestions([])
-    } else {
-      const formatted = (data || []).map((s: any) => ({
-        id: s.id,
-        name: s.name,
-        address: s.address,
-        status: s.status,
-        created_at: s.created_at,
-        latitude: s.latitude,
-        longitude: s.longitude,
-        submitted_by: s.submitted_by,
-        full_name: s.profiles?.full_name || null,
-        avatar_url: s.profiles?.avatar_url || null
-      }))
-      setSuggestions(formatted)
-
-      // Calculate stats
-      const pending = formatted.filter(s => s.status === 'pending').length
-      const approved = formatted.filter(s => s.status === 'approved').length
-      const rejected = formatted.filter(s => s.status === 'rejected').length
-      setStats({ pending, approved, rejected })
+    } finally {
+      setIsLoading(false)
     }
+  }, [activeTab, searchTerm, toast])
 
-    setIsLoading(false)
-  }, [toast])
-
+  // Initial load
   useEffect(() => {
-    if (!authLoading) fetchSuggestions()
-  }, [fetchSuggestions, authLoading])
-
-  // Filter suggestions by tab and search
-  useEffect(() => {
-    let filtered = suggestions.filter(s => s.status === activeTab)
-
-    if (searchTerm) {
-      const term = searchTerm.toLowerCase()
-      filtered = filtered.filter(s =>
-        s.name?.toLowerCase().includes(term) ||
-        s.address?.toLowerCase().includes(term) ||
-        s.full_name?.toLowerCase().includes(term)
-      )
+    if (!authLoading) {
+      fetchStats()
+      fetchSuggestions()
     }
-
-    setFilteredSuggestions(filtered)
-  }, [suggestions, activeTab, searchTerm])
+  }, [authLoading, fetchStats, fetchSuggestions]) // fetchSuggestions dependencies include activeTab
 
   const handleApprove = async (suggestion: SuggestedStation) => {
     setIsProcessing(true)
 
-      // 1. Insert into stations table
+    // 1. Insert into stations table
+    const { data: newStation, error: insertError } = await supabase
       .from('stations')
       .insert({
         name: suggestion.name,
@@ -214,8 +233,6 @@ export default function SuggestedStationsPage() {
       setIsProcessing(false)
       return
     }
-
-    const newStation = data;
 
     // 2. Update suggestion status
     const { error: updateError } = await supabase
@@ -237,7 +254,8 @@ export default function SuggestedStationsPage() {
 
     setIsProcessing(false)
     setIsDetailOpen(false)
-    fetchSuggestions()
+    fetchStats() // Refresh counts
+    fetchSuggestions() // Refresh list
   }
 
   const handleReject = async (suggestion: SuggestedStation) => {
@@ -260,7 +278,8 @@ export default function SuggestedStationsPage() {
 
     setIsProcessing(false)
     setIsDetailOpen(false)
-    fetchSuggestions()
+    fetchStats() // Refresh counts
+    fetchSuggestions() // Refresh list
   }
 
   const handleDelete = async () => {
@@ -289,7 +308,8 @@ export default function SuggestedStationsPage() {
 
     setIsProcessing(false)
     setSuggestionToDelete(null)
-    fetchSuggestions()
+    fetchStats() // Refresh counts
+    fetchSuggestions() // Refresh list
   }
 
   const openDetail = (suggestion: SuggestedStation) => {
@@ -310,6 +330,9 @@ export default function SuggestedStationsPage() {
     }
   }
 
+  // Use suggestions directly since they are already filtered by server
+  const displaySuggestions = suggestions
+
   return (
     <div className="flex flex-col gap-6 py-4">
       {/* Header */}
@@ -321,7 +344,7 @@ export default function SuggestedStationsPage() {
           </h1>
           <p className="text-sm text-muted-foreground">Review and moderate community-submitted fuel stations</p>
         </div>
-        <Button variant="outline" size="sm" onClick={fetchSuggestions} disabled={isLoading}>
+        <Button variant="outline" size="sm" onClick={() => { fetchStats(); fetchSuggestions(); }} disabled={isLoading}>
           <RefreshCw className={`mr-2 h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           Refresh
         </Button>
@@ -382,8 +405,8 @@ export default function SuggestedStationsPage() {
                           <Loader2 className="mx-auto h-6 w-6 animate-spin text-muted-foreground" />
                         </TableCell>
                       </TableRow>
-                    ) : filteredSuggestions.length > 0 ? (
-                      filteredSuggestions.map((item) => (
+                    ) : displaySuggestions.length > 0 ? (
+                      displaySuggestions.map((item) => (
                         <TableRow key={item.id} className="table-row-hover cursor-pointer" onClick={() => openDetail(item)}>
                           <TableCell>
                             <div className="font-medium text-sm">{item.name || "Unnamed Station"}</div>
@@ -492,7 +515,7 @@ export default function SuggestedStationsPage() {
                         <TableCell colSpan={5} className="h-32 text-center">
                           <div className="flex flex-col items-center gap-2 text-muted-foreground">
                             <Inbox className="h-10 w-10 opacity-50" />
-                            <span>No {tabValue} suggestions</span>
+                            <span>No {tabValue === 'pending' ? 'pending' : tabValue} suggestions</span>
                           </div>
                         </TableCell>
                       </TableRow>
@@ -502,7 +525,7 @@ export default function SuggestedStationsPage() {
               </CardContent>
               <CardFooter className="flex items-center justify-between py-4 border-t">
                 <div className="text-sm text-muted-foreground">
-                  {filteredSuggestions.length} {tabValue} suggestion{filteredSuggestions.length !== 1 ? 's' : ''}
+                  Showing top 50 {tabValue} suggestions
                 </div>
               </CardFooter>
             </Card>
