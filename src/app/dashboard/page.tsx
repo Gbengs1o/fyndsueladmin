@@ -47,6 +47,8 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { User } from "lucide-react"
+import { NationalPricesWidget } from "@/components/dashboard/national-prices-widget";
+import { LiveActivityFeed } from "@/components/dashboard/live-activity-feed";
 
 
 // --- Define Types for our Fetched Data ---
@@ -399,6 +401,9 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* --- NEW: National Prices Widget --- */}
+      <NationalPricesWidget />
+
       {/* --- Stat Cards Using Real Data --- */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <StatCard
@@ -575,47 +580,9 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-3 chart-container animate-fade-in-up opacity-0" style={{ animationDelay: '300ms', animationFillMode: 'forwards' }}>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base font-medium">Weekly Submissions by Location</CardTitle>
-            <CardDescription>
-              {regionData.length > 0 ? "Top locations by price submissions (7 days)" : "No data for the last 7 days"}
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            {chartsLoading ? (
-              <Skeleton className="w-full h-[320px] rounded-lg" />
-            ) : (
-              <ResponsiveContainer width="100%" height={320}>
-                {regionData.length > 0 ? (
-                  <BarChart data={regionData} layout="vertical">
-                    <XAxis type="number" stroke="hsl(var(--muted-foreground))" fontSize={12} tickLine={false} axisLine={false} hide />
-                    <YAxis type="category" dataKey="address" stroke="hsl(var(--muted-foreground))" fontSize={11} tickLine={false} axisLine={false} width={85} />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: 'hsl(var(--card))',
-                        borderColor: 'hsl(var(--border))',
-                        borderRadius: '8px',
-                        fontSize: '13px',
-                        boxShadow: '0 4px 12px rgb(0 0 0 / 0.08)'
-                      }}
-                      cursor={{ fill: 'hsl(var(--muted) / 0.5)' }}
-                    />
-                    <CartesianGrid strokeDasharray="3 3" className="stroke-border/50" horizontal={false} />
-                    <Bar dataKey="submissions" fill="hsl(var(--primary))" radius={[0, 4, 4, 0]} />
-                  </BarChart>
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-muted-foreground">
-                    <div className="text-center space-y-2">
-                      <BarChart3 className="h-10 w-10 mx-auto text-muted-foreground/40" />
-                      <p className="text-sm">No recent data</p>
-                    </div>
-                  </div>
-                )}
-              </ResponsiveContainer>
-            )}
-          </CardContent>
-        </Card>
+        <div className="lg:col-span-3 h-full">
+          <LiveActivityFeed />
+        </div>
       </div>
 
       {/* --- Tables Section --- */}
