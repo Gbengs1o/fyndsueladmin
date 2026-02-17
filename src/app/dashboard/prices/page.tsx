@@ -38,7 +38,6 @@ import { supabase } from "@/lib/supabase";
 const formSchema = z.object({
     scope: z.enum(["national", "state"]),
     state: z.string().optional(),
-    brand: z.string().optional(),
     pms_price: z.string().optional(),
     ago_price: z.string().optional(),
     dpk_price: z.string().optional(),
@@ -67,7 +66,6 @@ export default function PriceControlPage() {
         defaultValues: {
             scope: "state",
             state: "Lagos",
-            brand: "all",
             pms_price: "",
             ago_price: "",
             dpk_price: "",
@@ -83,43 +81,47 @@ export default function PriceControlPage() {
         if (!stateName) return;
 
         setLoadingStats(true);
+        setLoadingStats(true);
         try {
-            const { data, error } = await supabase
-                .from("stations")
-                .select("official_price_pms, official_price_ago, official_price_dpk, official_price_lpg")
-                .ilike("state", stateName);
+            const [stationsResult, pricesResult] = await Promise.all([
+                supabase
+                    .from("stations")
+                    .select("id", { count: 'exact', head: true })
+                    .eq("state", stateName),
+                supabase
+                    .from("official_prices")
+                    .select("pms_price, ago_price, dpk_price, lpg_price")
+                    .eq("state", stateName)
+                    .eq("brand", "all")
+                    .single()
+            ]);
 
-            if (error) throw error;
+            const stationCount = stationsResult.count || 0;
+            const prices = pricesResult.data || { pms_price: null, ago_price: null, dpk_price: null, lpg_price: null };
 
-            if (data && data.length > 0) {
-                // Get the most common price (modal price) for each fuel type
-                const pmsPrice = data.find(s => s.official_price_pms)?.official_price_pms || null;
-                const agoPrice = data.find(s => s.official_price_ago)?.official_price_ago || null;
-                const dpkPrice = data.find(s => s.official_price_dpk)?.official_price_dpk || null;
-                const lpgPrice = data.find(s => s.official_price_lpg)?.official_price_lpg || null;
+            setStateStats({
+                stationCount: stationCount,
+                currentPrices: {
+                    pms: prices.pms_price,
+                    ago: prices.ago_price,
+                    dpk: prices.dpk_price,
+                    lpg: prices.lpg_price,
+                },
+                stationsWithPrices: stationCount, // In the new system, if a price is set, all stations effectively have it
+            });
 
-                setStateStats({
-                    stationCount: data.length,
-                    currentPrices: {
-                        pms: pmsPrice,
-                        ago: agoPrice,
-                        dpk: dpkPrice,
-                        lpg: lpgPrice,
-                    },
-                    stationsWithPrices: data.filter(s => s.official_price_pms).length,
-                });
-            } else {
-                setStateStats({
-                    stationCount: 0,
-                    currentPrices: { pms: null, ago: null, dpk: null, lpg: null },
-                    stationsWithPrices: 0,
-                });
-            }
         } catch (error) {
             console.error("Failed to fetch state stats:", error);
+            // safe fallback
+            setStateStats({
+                stationCount: 0,
+                currentPrices: { pms: null, ago: null, dpk: null, lpg: null },
+                stationsWithPrices: 0,
+            });
         } finally {
             setLoadingStats(false);
         }
+
     }, []);
 
     useEffect(() => {
@@ -139,7 +141,7 @@ export default function PriceControlPage() {
                 .from('official_prices')
                 .upsert({
                     state: values.scope === 'national' ? 'National' : values.state,
-                    brand: values.brand || 'all',
+                    brand: 'all',
                     pms_price: values.pms_price ? Number(values.pms_price) : null,
                     ago_price: values.ago_price ? Number(values.ago_price) : null,
                     dpk_price: values.dpk_price ? Number(values.dpk_price) : null,
@@ -155,12 +157,12 @@ export default function PriceControlPage() {
             await supabase.from('price_updates_log').insert({
                 scope: values.scope,
                 state: values.state || null,
-                brand: values.brand || 'all',
+                brand: 'all',
                 pms_price: values.pms_price ? Number(values.pms_price) : null,
                 ago_price: values.ago_price ? Number(values.ago_price) : null,
                 dpk_price: values.dpk_price ? Number(values.dpk_price) : null,
                 lpg_price: values.lpg_price ? Number(values.lpg_price) : null,
-                affected_count: null, // Trigger handles the actual count
+                affected_count: 0, // No longer affects stations table individual rows
             });
 
             toast({
@@ -261,32 +263,7 @@ export default function PriceControlPage() {
                                     )}
                                 </div>
 
-                                <FormField
-                                    control={form.control}
-                                    name="brand"
-                                    render={({ field }) => (
-                                        <FormItem>
-                                            <FormLabel>Brand Filter (Optional)</FormLabel>
-                                            <Select onValueChange={field.onChange} defaultValue={field.value}>
-                                                <FormControl>
-                                                    <SelectTrigger>
-                                                        <SelectValue placeholder="All Brands" />
-                                                    </SelectTrigger>
-                                                </FormControl>
-                                                <SelectContent>
-                                                    <SelectItem value="all">All Brands</SelectItem>
-                                                    <SelectItem value="nnpc">NNPC</SelectItem>
-                                                    <SelectItem value="total">TotalEnergies</SelectItem>
-                                                    <SelectItem value="oando">Oando</SelectItem>
-                                                    <SelectItem value="conoil">Conoil</SelectItem>
-                                                    <SelectItem value="mrs">MRS</SelectItem>
-                                                    <SelectItem value="mobil">11Plc (Mobil)</SelectItem>
-                                                </SelectContent>
-                                            </Select>
-                                            <FormMessage />
-                                        </FormItem>
-                                    )}
-                                />
+
 
                                 <div className="grid grid-cols-2 gap-4">
                                     <FormField
