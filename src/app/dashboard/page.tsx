@@ -58,7 +58,7 @@ interface Stats {
   totalSubmissions: number;
   pendingSuggestions: number;
   totalFlags: number;
-  pendingManagers: number;
+  verifiedManagers: number;
 }
 interface MonthlyPrice {
   month: string;
@@ -209,7 +209,7 @@ export default function DashboardPage() {
         const submissionCountPromise = supabase.from('price_reports').select('*', { count: 'exact', head: true });
         const suggestionCountPromise = supabase.from('suggested_fuel_stations').select('*', { count: 'exact', head: true }).eq('status', 'pending');
         const flagCountPromise = supabase.from('flagged_stations').select('*', { count: 'exact', head: true });
-        const managerCountPromise = supabase.from('manager_profiles').select('*', { count: 'exact', head: true }).eq('verification_status', 'pending');
+        const managerCountPromise = supabase.from('manager_profiles').select('*', { count: 'exact', head: true }).eq('verification_status', 'verified');
 
         const [
           { count: stationCount },
@@ -233,7 +233,7 @@ export default function DashboardPage() {
           totalSubmissions: submissionCount ?? 0,
           pendingSuggestions: suggestionCount ?? 0,
           totalFlags: flagCount ?? 0,
-          pendingManagers: managerCount ?? 0,
+          verifiedManagers: managerCount ?? 0,
         });
       } catch (error) {
         console.error("Error fetching stats:", error);
@@ -418,8 +418,8 @@ export default function DashboardPage() {
         />
         <StatCard
           href="/dashboard/managers"
-          title="Verify Managers"
-          value={stats?.pendingManagers}
+          title="Verified Managers"
+          value={stats?.verifiedManagers}
           icon={ShieldCheck}
           iconBgClass="icon-container-primary"
           iconColorClass="text-blue-600 dark:text-blue-500"
