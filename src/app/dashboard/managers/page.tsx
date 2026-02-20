@@ -31,6 +31,7 @@ import {
 } from "lucide-react"
 import { format, formatDistanceToNow, isValid } from "date-fns"
 import Link from "next/link"
+import { useRouter } from "next/navigation"
 
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -140,20 +141,20 @@ interface ManagerProfile {
 export default function ManagersPage() {
     const { isLoading: authLoading } = useAuth()
     const { toast } = useToast()
+    const router = useRouter()
     const [managers, setManagers] = useState<ManagerProfile[]>([])
     const [isLoading, setIsLoading] = useState(true)
     const [searchTerm, setSearchTerm] = useState("")
 
     // Modal states
     const [selectedManager, setSelectedManager] = useState<ManagerProfile | null>(null)
-    const [isProfileOpen, setIsProfileOpen] = useState(false)
-    const [isLedgerOpen, setIsLedgerOpen] = useState(false)
-    const [isPhotoOpen, setIsPhotoOpen] = useState(false)
     const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false)
+    const [isPhotoOpen, setIsPhotoOpen] = useState(false)
+    const [isLedgerOpen, setIsLedgerOpen] = useState(false)
     const [stationSearch, setStationSearch] = useState("")
-    const [stations, setStations] = useState<{ id: number, name: string, city: string, state: string }[]>([])
+    const [stations, setStations] = useState<any[]>([])
     const [isSearchingStations, setIsSearchingStations] = useState(false)
-
+    
     // Sorting state
     const [sortConfig, setSortConfig] = useState<{ key: keyof ManagerProfile, direction: 'asc' | 'desc' } | null>(null)
 
@@ -365,8 +366,7 @@ export default function ManagersPage() {
     }
 
     const handleRowClick = (manager: ManagerProfile) => {
-        setSelectedManager(manager)
-        setIsProfileOpen(true)
+        router.push(`/dashboard/managers/${manager.id}`)
     }
 
     const calculateStationHealth = (station?: ManagerProfile['stations']) => {
@@ -620,261 +620,7 @@ export default function ManagersPage() {
                 </CardContent>
             </Card>
 
-            {/* Manager Profile Sheet */}
-            <Sheet open={isProfileOpen} onOpenChange={setIsProfileOpen}>
-                <SheetContent className="sm:max-w-xl w-full p-0">
-                    {selectedManager && (
-                        <div className="flex flex-col h-full bg-background">
-                            <SheetHeader className="p-6 border-b bg-muted/20">
-                                <div className="flex items-center gap-4 text-left">
-                                    <Avatar className="h-16 w-16 border-2 border-background shadow-sm">
-                                        <AvatarImage src={selectedManager.profiles?.avatar_url || ''} />
-                                        <AvatarFallback className="text-xl">
-                                            {selectedManager.full_name.charAt(0)}
-                                        </AvatarFallback>
-                                    </Avatar>
-                                    <div className="flex flex-col">
-                                        <SheetTitle className="text-xl flex items-center gap-2">
-                                            {selectedManager.full_name}
-                                            {selectedManager.is_gold && (
-                                                <ShieldCheck className="h-5 w-5 text-emerald-500 fill-emerald-500/20" />
-                                            )}
-                                        </SheetTitle>
-                                        <SheetDescription className="flex flex-col gap-1 mt-1">
-                                            <span className="flex items-center gap-1"><Mail className="h-3 w-3" /> {selectedManager.profiles?.email}</span>
-                                            <span className="flex items-center gap-1"><Phone className="h-3 w-3" /> {selectedManager.phone_number}</span>
-                                        </SheetDescription>
-                                        <div className="mt-2">
-                                            {getStatusBadge(selectedManager.verification_status)}
-                                        </div>
-                                    </div>
-                                </div>
-                            </SheetHeader>
-
-                            <Tabs defaultValue="overview" className="flex-1 flex flex-col">
-                                <div className="px-6 border-b bg-background">
-                                    <TabsList className="w-full justify-start h-12 bg-transparent gap-6 p-0">
-                                        <TabsTrigger value="overview" className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2">Overview</TabsTrigger>
-                                        <TabsTrigger value="activity" className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2">Activity</TabsTrigger>
-                                        <TabsTrigger value="station" className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2">Station</TabsTrigger>
-                                    </TabsList>
-                                </div>
-
-                                <ScrollArea className="flex-1">
-                                    <TabsContent value="overview" className="p-6 m-0 space-y-6">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <Card className="bg-primary/5 border-none shadow-none text-left">
-                                                <CardContent className="p-4 pt-4">
-                                                    <div className="text-xs font-bold text-muted-foreground uppercase tracking-widest mb-1">Trust Score</div>
-                                                    <div className="text-3xl font-black text-primary">{selectedManager.trust_score}%</div>
-                                                </CardContent>
-                                            </Card>
-                                            <Card className="bg-emerald-50 border-none shadow-none text-left">
-                                                <CardContent className="p-4 pt-4">
-                                                    <div className="text-xs font-bold text-emerald-600 uppercase tracking-widest mb-1">Response Rate</div>
-                                                    <div className="text-3xl font-black text-emerald-700">{selectedManager.response_rate}%</div>
-                                                </CardContent>
-                                            </Card>
-                                        </div>
-
-                                        <div className="space-y-4 text-left">
-                                            <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Performance Breakdown</h3>
-                                            <div className="space-y-3">
-                                                <div className="flex flex-col gap-1.5">
-                                                    <div className="flex justify-between text-sm">
-                                                        <span>Meter Accuracy</span>
-                                                        <span className="font-bold">
-                                                            {((selectedManager.stations?.reviews.reduce((acc, r) => acc + (r.rating_meter || 5), 0) || 0) / (selectedManager.total_reviews || 1)).toFixed(1)}/5.0
-                                                        </span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-blue-500"
-                                                            style={{ width: `${((selectedManager.stations?.reviews.reduce((acc, r) => acc + (r.rating_meter || 5), 0) || 0) / ((selectedManager.total_reviews || 1) * 5)) * 100}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col gap-1.5">
-                                                    <div className="flex justify-between text-sm">
-                                                        <span>Fuel Quality</span>
-                                                        <span className="font-bold">
-                                                            {((selectedManager.stations?.reviews.reduce((acc, r) => acc + (r.rating_quality || 5), 0) || 0) / (selectedManager.total_reviews || 1)).toFixed(1)}/5.0
-                                                        </span>
-                                                    </div>
-                                                    <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                                                        <div
-                                                            className="h-full bg-emerald-500"
-                                                            style={{ width: `${((selectedManager.stations?.reviews.reduce((acc, r) => acc + (r.rating_quality || 5), 0) || 0) / ((selectedManager.total_reviews || 1) * 5)) * 100}%` }}
-                                                        />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        </div>
-
-                                        <div className="p-4 rounded-xl border bg-muted/5 space-y-3 text-left">
-                                            <div className="flex justify-between items-center">
-                                                <span className="text-sm font-medium">Reward Points</span>
-                                                <div className="flex items-center gap-1.5 font-bold text-primary">
-                                                    {selectedManager.profiles?.point_transactions?.reduce((sum, t) => sum + t.amount, 0) || 0}
-                                                    <Star className="h-4 w-4 fill-current" />
-                                                </div>
-                                            </div>
-                                            <Button variant="outline" size="sm" className="w-full h-8 text-xs font-bold uppercase tracking-wider" onClick={() => setIsLedgerOpen(true)}>
-                                                View Transaction Ledger
-                                            </Button>
-                                        </div>
-
-                                        {selectedManager.verification_photo_url && (
-                                            <div className="space-y-4 text-left">
-                                                <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Verification Photo</h3>
-                                                <div className="relative group rounded-xl overflow-hidden border aspect-video cursor-pointer" onClick={() => setIsPhotoOpen(true)}>
-                                                    <img
-                                                        src={selectedManager.verification_photo_url}
-                                                        alt="Verification Board"
-                                                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                                                    />
-                                                    <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                        <ExternalLink className="text-white w-6 h-6" />
-                                                    </div>
-                                                </div>
-                                            </div>
-                                        )}
-                                    </TabsContent>
-
-                                    <TabsContent value="activity" className="p-6 m-0 space-y-6">
-                                        <div className="space-y-4 text-left">
-                                            <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Price Reporting Logs</h3>
-                                            <div className="border rounded-xl overflow-hidden">
-                                                <Table>
-                                                    <TableHeader className="bg-muted/50">
-                                                        <TableRow>
-                                                            <TableHead className="text-[10px] uppercase font-bold">Time</TableHead>
-                                                            <TableHead className="text-[10px] uppercase font-bold">Fuel</TableHead>
-                                                            <TableHead className="text-[10px] uppercase font-bold">Price</TableHead>
-                                                            <TableHead className="text-[10px] uppercase font-bold text-right">Rating</TableHead>
-                                                        </TableRow>
-                                                    </TableHeader>
-                                                    <TableBody>
-                                                        {selectedManager.profiles?.price_reports?.length ? (
-                                                            selectedManager.profiles.price_reports.slice(0, 10).map((report) => (
-                                                                <TableRow key={report.id}>
-                                                                    <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
-                                                                        {formatDistanceToNow(new Date(report.created_at))} ago
-                                                                    </TableCell>
-                                                                    <TableCell><Badge variant="outline" className="text-[9px] px-1">{report.fuel_type}</Badge></TableCell>
-                                                                    <TableCell className="font-bold text-sm">₦{report.price}</TableCell>
-                                                                    <TableCell className="text-right">
-                                                                        {report.rating > 0 ? (
-                                                                            <div className="flex items-center justify-end gap-1 text-amber-500">
-                                                                                <span className="text-xs font-bold">{report.rating}</span>
-                                                                                <Star className="h-3 w-3 fill-current" />
-                                                                            </div>
-                                                                        ) : '-'}
-                                                                    </TableCell>
-                                                                </TableRow>
-                                                            ))
-                                                        ) : (
-                                                            <TableRow>
-                                                                <TableCell colSpan={4} className="text-center py-8 text-xs text-muted-foreground italic">No reports found</TableCell>
-                                                            </TableRow>
-                                                        )}
-                                                    </TableBody>
-                                                </Table>
-                                            </div>
-                                        </div>
-
-                                        <div className="space-y-4 text-left">
-                                            <h3 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Station Feedback ({selectedManager.total_reviews})</h3>
-                                            <div className="space-y-4">
-                                                {selectedManager.stations?.reviews.length === 0 ? (
-                                                    <div className="text-center py-12 text-muted-foreground italic bg-muted/10 rounded-xl border-2 border-dashed">No reviews yet.</div>
-                                                ) : (
-                                                    selectedManager.stations?.reviews.map((review) => (
-                                                        <div key={review.id} className="p-4 border rounded-xl space-y-3 bg-muted/5">
-                                                            <div className="flex items-start justify-between">
-                                                                <div className="flex items-center gap-2">
-                                                                    <Avatar className="h-7 w-7">
-                                                                        <AvatarImage src={review.profiles?.avatar_url || ''} />
-                                                                        <AvatarFallback>{review.profiles?.full_name?.charAt(0) || 'U'}</AvatarFallback>
-                                                                    </Avatar>
-                                                                    <span className="text-xs font-bold">{review.profiles?.full_name || 'Anonymous'}</span>
-                                                                </div>
-                                                                <div className="flex gap-1.5">
-                                                                    <Badge variant="outline" className="text-[9px] px-1 bg-blue-50">M: {review.rating_meter}/5</Badge>
-                                                                    <Badge variant="outline" className="text-[9px] px-1 bg-emerald-50">Q: {review.rating_quality}/5</Badge>
-                                                                </div>
-                                                            </div>
-                                                            {review.comment && <p className="text-sm italic text-muted-foreground leading-relaxed">"{review.comment}"</p>}
-                                                            {review.response && (
-                                                                <div className="ml-4 p-3 bg-primary/5 border-l-2 border-primary rounded-r-lg">
-                                                                    <p className="text-[12px] font-bold text-primary mb-1 uppercase tracking-tight">Manager Response</p>
-                                                                    <p className="text-xs">{review.response}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ))
-                                                )}
-                                            </div>
-                                        </div>
-                                    </TabsContent>
-
-                                    <TabsContent value="station" className="p-6 m-0 space-y-6">
-                                        {selectedManager.stations ? (
-                                            <div className="space-y-6 text-left">
-                                                <div className="flex items-start gap-4 p-5 bg-muted/20 rounded-2xl border border-muted/30">
-                                                    <div className="p-3 bg-background rounded-xl border shadow-sm text-primary">
-                                                        <Building2 className="h-6 w-6" />
-                                                    </div>
-                                                    <div>
-                                                        <h4 className="font-bold text-lg">{selectedManager.stations.name}</h4>
-                                                        <p className="text-sm text-muted-foreground mt-1 leading-relaxed">
-                                                            {selectedManager.stations.address}
-                                                            <br />
-                                                            {selectedManager.stations.state}
-                                                        </p>
-                                                    </div>
-                                                </div>
-
-                                                <div className="grid grid-cols-2 gap-4">
-                                                    <div className="p-4 border rounded-xl bg-background shadow-sm space-y-2">
-                                                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Health Score</p>
-                                                        <div className={`text-2xl font-black ${calculateStationHealth(selectedManager.stations)?.color}`}>
-                                                            {calculateStationHealth(selectedManager.stations)?.score}%
-                                                        </div>
-                                                        <Badge variant="outline" className="text-[9px] font-bold uppercase">{calculateStationHealth(selectedManager.stations)?.label}</Badge>
-                                                    </div>
-                                                    <div className="p-4 border rounded-xl bg-background shadow-sm space-y-2">
-                                                        <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Active Flags</p>
-                                                        <div className="text-2xl font-black text-red-500">
-                                                            {selectedManager.stations.flagged_stations?.length || 0}
-                                                        </div>
-                                                        <Badge variant="outline" className="text-[9px] font-bold uppercase">{selectedManager.stations.flagged_stations?.length ? 'Attention Required' : 'All Clear'}</Badge>
-                                                    </div>
-                                                </div>
-
-                                                <Button
-                                                    className="w-full h-12 text-sm font-bold rounded-xl shadow-lg"
-                                                    onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${selectedManager.stations?.latitude},${selectedManager.stations?.longitude}`, '_blank')}
-                                                >
-                                                    <MapPin className="mr-2 h-4 w-4" /> Open in Google Maps
-                                                </Button>
-                                            </div>
-                                        ) : (
-                                            <div className="text-center py-20 text-muted-foreground italic bg-muted/5 rounded-2xl border-2 border-dashed mx-6">
-                                                No station currently assigned.
-                                            </div>
-                                        )}
-                                    </TabsContent>
-                                </ScrollArea>
-                            </Tabs>
-
-                            <div className="p-6 border-t bg-muted/20 flex justify-end items-center">
-                                <Button onClick={() => setIsProfileOpen(false)} variant="outline" className="font-bold shadow-sm">Close View</Button>
-                            </div>
-                        </div>
-                    )}
-                </SheetContent>
-            </Sheet>
+            {/* Remaining Dialogs for Management Actions */}
 
             {/* Point Ledger Dialog */}
             <Dialog open={isLedgerOpen} onOpenChange={setIsLedgerOpen}>
@@ -934,80 +680,6 @@ export default function ManagersPage() {
                             </span>
                             <Star className="h-6 w-6 text-primary fill-primary" />
                         </div>
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* Photo View Dialog */}
-            <Dialog open={isPhotoOpen} onOpenChange={setIsPhotoOpen}>
-                <DialogContent className="max-w-2xl bg-black border-none p-0 overflow-hidden shadow-2xl">
-                    <div className="relative">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute top-4 right-4 text-white hover:bg-white/20 z-10"
-                            onClick={() => setIsPhotoOpen(false)}
-                        >
-                            <XCircle className="h-6 w-6" />
-                        </Button>
-                        {selectedManager?.verification_photo_url ? (
-                            <img
-                                src={selectedManager.verification_photo_url}
-                                alt="Verification Proof"
-                                className="w-full h-auto max-h-[85vh] object-contain"
-                            />
-                        ) : (
-                            <div className="h-64 flex items-center justify-center text-white italic">No photo available</div>
-                        )}
-                    </div>
-                </DialogContent>
-            </Dialog>
-
-            {/* Assign Station Dialog */}
-            <Dialog open={isAssignDialogOpen} onOpenChange={setIsAssignDialogOpen}>
-                <DialogContent className="max-w-md p-6">
-                    <DialogHeader>
-                        <DialogTitle className="text-xl">Assign Station</DialogTitle>
-                        <DialogDescription>
-                            Search and select a station for {selectedManager?.full_name}
-                        </DialogDescription>
-                    </DialogHeader>
-                    <div className="space-y-4 py-4">
-                        <div className="relative">
-                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                            <Input
-                                placeholder="Search station name..."
-                                className="pl-10 h-11 rounded-xl shadow-sm focus-visible:ring-primary"
-                                value={stationSearch}
-                                onChange={e => setStationSearch(e.target.value)}
-                            />
-                        </div>
-
-                        <ScrollArea className="h-72 pr-2">
-                            <div className="space-y-2">
-                                {isSearchingStations ? (
-                                    <div className="text-center py-12"><RefreshCw className="h-6 w-6 animate-spin mx-auto text-muted-foreground/30" /></div>
-                                ) : stations.length > 0 ? (
-                                    stations.map(station => (
-                                        <div
-                                            key={station.id}
-                                            className="flex items-center justify-between p-4 border rounded-xl hover:bg-primary/5 hover:border-primary/20 cursor-pointer transition-all active:scale-[0.98] group"
-                                            onClick={() => handleAssignStation(station.id)}
-                                        >
-                                            <div className="flex-1 min-w-0 pr-4 text-left">
-                                                <div className="font-bold text-sm truncate group-hover:text-primary transition-colors">{station.name}</div>
-                                                <div className="text-xs text-muted-foreground truncate">{station.city}, {station.state}</div>
-                                            </div>
-                                            <Button size="sm" variant="ghost" className="rounded-lg h-8 px-3 shrink-0 text-primary font-bold">Select</Button>
-                                        </div>
-                                    ))
-                                ) : stationSearch.length >= 2 ? (
-                                    <div className="text-center py-12 text-sm text-muted-foreground bg-muted/10 rounded-xl">No stations found.</div>
-                                ) : (
-                                    <div className="text-center py-12 text-sm text-muted-foreground italic">Type at least 2 characters...</div>
-                                )}
-                            </div>
-                        </ScrollArea>
                     </div>
                 </DialogContent>
             </Dialog>
