@@ -43,13 +43,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true
 
-    // Safety timeout to prevent infinite loading
-    const safetyTimeout = setTimeout(() => {
-      if (mounted) setIsLoading(false)
-    }, 10000)
 
     const initAuth = async () => {
       try {
+        console.log("Auth: Initializing session...")
         const { data: { session }, error } = await supabase.auth.getSession()
         if (error) throw error
 
@@ -57,15 +54,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           setSession(session)
           setUser(session?.user ?? null)
 
+          // Proactively set loading to false as soon as session is known
+          // We'll fetch the admin details in the background
+          if (!session) {
+            setIsLoading(false)
+          }
+
           if (session?.user) {
-            const admin = await fetchAdminUser(session.user.id)
-            if (mounted) setAdminUser(admin)
+            fetchAdminUser(session.user.id).then(admin => {
+              if (mounted) {
+                setAdminUser(admin)
+                setIsLoading(false)
+              }
+            })
           }
         }
       } catch (error) {
-        console.error("Error initializing auth:", error)
-      } finally {
-        clearTimeout(safetyTimeout)
+        console.error("Auth: Error initializing auth:", error)
         if (mounted) setIsLoading(false)
       }
     }

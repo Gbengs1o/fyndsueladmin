@@ -1,7 +1,7 @@
 "use client"
 
 import { useAuth } from "@/lib/auth-context"
-import { Loader2 } from "lucide-react"
+import { LoadingScreen } from "@/components/loading-screen"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
 
@@ -19,9 +19,5 @@ export default function HomePage() {
     }
   }, [user, isLoading, router])
 
-  return (
-    <main className="flex min-h-screen flex-col items-center justify-center bg-background">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
-    </main>
-  )
+  return <LoadingScreen />
 }
