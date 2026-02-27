@@ -32,12 +32,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const router = useRouter()
 
   const fetchAdminUser = async (userId: string) => {
-    const { data } = await supabase
-      .from("admin_users")
-      .select("*")
-      .eq("id", userId)
-      .single()
-    return data as AdminUser | null
+    try {
+      const { data, error } = await supabase
+        .from("admin_users")
+        .select("*")
+        .eq("id", userId)
+        .single()
+
+      if (error && error.code !== 'PGRST116') { // PGRST116 is 'no rows found'
+        console.warn("Auth: Error fetching admin profile:", error)
+      }
+      return data as AdminUser | null
+    } catch (err) {
+      console.error("Auth: Exception in fetchAdminUser:", err)
+      return null
+    }
   }
 
   useEffect(() => {
@@ -66,7 +75,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 setAdminUser(admin)
                 setIsLoading(false)
               }
+            }).catch(() => {
+              if (mounted) setIsLoading(false)
             })
+          } else {
+            setIsLoading(false)
           }
         }
       } catch (error) {
@@ -81,17 +94,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async (event, session) => {
         if (!mounted) return
 
-        setSession(session)
-        setUser(session?.user ?? null)
+        // Only update if the user has actually changed to avoid redundant fetches
+        // and potential "signal aborted" conflicts with the signIn function.
+        if (session?.user?.id !== user?.id) {
+          setSession(session)
+          setUser(session?.user ?? null)
 
-        if (session?.user) {
-          const admin = await fetchAdminUser(session.user.id)
-          if (mounted) setAdminUser(admin)
-        } else {
-          if (mounted) setAdminUser(null)
+          if (session?.user) {
+            fetchAdminUser(session.user.id).then(admin => {
+              if (mounted) setAdminUser(admin)
+            })
+          } else {
+            if (mounted) setAdminUser(null)
+          }
         }
 
-        // Ensure loading is false after auth state change
+        // Always ensure loading is false after auth state change
         if (mounted) setIsLoading(false)
       }
     )
