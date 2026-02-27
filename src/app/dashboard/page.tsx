@@ -200,9 +200,39 @@ export default function DashboardPage() {
   useEffect(() => {
     if (authLoading) return;
 
-    // 1. Fetch Stats (Fastest)
-    const fetchStats = async () => {
+    // 1. Fetch Stats (Unified)
+    const fetchUnifiedData = async () => {
       setStatsLoading(true);
+      try {
+        const { data, error } = await supabase.rpc('get_comprehensive_dashboard_stats');
+
+        if (error) {
+          console.warn("Unified stats error (might be using fallback):", error);
+          // Fallback to individual calls if RPC fails (e.g. if not yet applied to DB)
+          fetchStatsFallback();
+          fetchGamificationFallback();
+          return;
+        }
+
+        if (data) {
+          setStats({
+            totalStations: data.totalStations ?? 0,
+            activeUsers: data.activeUsers ?? 0,
+            totalSubmissions: data.totalSubmissions ?? 0,
+            pendingSuggestions: data.pendingSuggestions ?? 0,
+            totalFlags: data.totalFlags ?? 0,
+            verifiedManagers: data.verifiedManagers ?? 0,
+          });
+          setGamificationStats(data.gamification);
+        }
+      } catch (error) {
+        console.error("Error fetching unified stats:", error);
+      } finally {
+        setStatsLoading(false);
+      }
+    };
+
+    const fetchStatsFallback = async () => {
       try {
         const stationCountPromise = supabase.from('stations').select('*', { count: 'exact', head: true });
         const userCountPromise = supabase.from('profiles').select('*', { count: 'exact', head: true });
@@ -236,9 +266,7 @@ export default function DashboardPage() {
           verifiedManagers: managerCount ?? 0,
         });
       } catch (error) {
-        console.error("Error fetching stats:", error);
-      } finally {
-        setStatsLoading(false);
+        console.error("Fallback stats error:", error);
       }
     };
 
@@ -354,8 +382,7 @@ export default function DashboardPage() {
       }
     };
 
-    // 4. Fetch Gamification Stats
-    const fetchGamificationStats = async () => {
+    const fetchGamificationFallback = async () => {
       try {
         const { data, error } = await supabase.rpc('get_gamification_dashboard_stats');
         if (data && !error) {
@@ -366,10 +393,9 @@ export default function DashboardPage() {
       }
     };
 
-    fetchStats();
+    fetchUnifiedData();
     fetchCharts();
     fetchRecentLists();
-    fetchGamificationStats();
 
   }, [authLoading]);
 
