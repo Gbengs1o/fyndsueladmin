@@ -20,7 +20,7 @@ import {
     Pie,
     Cell,
 } from "recharts"
-import { Loader2, TrendingUp, Users, Activity, Fuel } from "lucide-react"
+import { Loader2, TrendingUp, Users, Activity, Fuel, Zap, MapPin } from "lucide-react"
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import {
@@ -31,6 +31,15 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
+
+// New Global Analytics Components
+import PlatformReachStatCard from "@/components/dashboard/global-analytics/PlatformReachStatCard"
+import PlatformTrafficStatCard from "@/components/dashboard/global-analytics/PlatformTrafficStatCard"
+import GlobalBusiestDayStatCard from "@/components/dashboard/global-analytics/GlobalBusiestDayStatCard"
+import PlatformEngagementChart from "@/components/dashboard/global-analytics/PlatformEngagementChart"
+import GlobalActivityFeed from "@/components/dashboard/global-analytics/GlobalActivityFeed"
+import SystemConversionEfficiency from "@/components/dashboard/global-analytics/SystemConversionEfficiency"
+import GlobalAnalyticsHelp from "@/components/dashboard/global-analytics/GlobalAnalyticsHelp"
 
 // Theme colors
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8'];
@@ -93,16 +102,26 @@ export default function AnalyticsPage() {
                     .order('created_at', { ascending: false })
                     .limit(20)
 
+                const totalUsersPromise = supabase.from('profiles').select('*', { count: 'exact', head: true })
+                const totalStationsPromise = supabase.from('stations').select('*', { count: 'exact', head: true })
+                const verifiedStationsPromise = supabase.from('stations').select('id').not('manager_id', 'is', null)
+
                 const [
                     { data: reports, error: reportsError },
                     { data: newUsers, error: usersError },
                     { data: stations, error: stationsError },
-                    { data: verificationData, error: verificationError }
+                    { data: verificationData, error: verificationError },
+                    { count: totalUsersCount },
+                    { count: totalStationsCount },
+                    { data: verifiedStationsList }
                 ] = await Promise.all([
                     reportsPromise,
                     usersPromise,
                     stationsPromise,
-                    verificationPromise
+                    verificationPromise,
+                    totalUsersPromise,
+                    totalStationsPromise,
+                    verifiedStationsPromise
                 ])
 
                 if (reportsError) console.error("Error fetching reports:", reportsError)
@@ -205,6 +224,44 @@ export default function AnalyticsPage() {
                     reported_by: item.profiles?.full_name || 'Anonymous'
                 }))
 
+                // 7. Global Activity Feed
+                const activities = [
+                    ...(reports?.map((r: any) => ({
+                        id: `rep-${r.created_at}-${r.user_id}-${r.station_id}`,
+                        type: 'report',
+                        created_at: r.created_at,
+                        description: `New price report at ${stationMap.get(r.station_id)?.name || 'Unknown Station'}`
+                    })) || []),
+                    ...(newUsers?.map((u: any) => ({
+                        id: `usr-${u.created_at}`,
+                        type: 'new_user',
+                        created_at: u.created_at,
+                        description: 'New driver registered on the platform'
+                    })) || [])
+                ].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 50);
+
+                // 8. Platform Engagement Data (combining trends and growth)
+                const engagementData = dateRange.map(date => {
+                    const dateStr = date.toISOString();
+                    const repCount = reports?.filter((r: any) => isSameDay(new Date(r.created_at), date)).length || 0;
+                    const usrCount = newUsers?.filter((u: any) => isSameDay(new Date(u.created_at), date)).length || 0;
+                    return { date: dateStr, reports: repCount, users: usrCount };
+                });
+
+                // Calculate additional stats
+                const activeUsersCount = new Set(reports?.map((r: any) => r.user_id).filter(Boolean)).size;
+                const prevReports = reports?.filter((r: any) => new Date(r.created_at) < subDays(new Date(), 15)).length || 0;
+                const recentReports = reports?.filter((r: any) => new Date(r.created_at) >= subDays(new Date(), 15)).length || 0;
+                const trafficGrowth = prevReports > 0 ? Math.round(((recentReports - prevReports) / prevReports) * 100) : 0;
+                const avgReportsPerDay = Math.round((reports?.length || 0) / 30);
+                const activationRate = totalUsersCount ? Math.round((activeUsersCount / totalUsersCount) * 100) : 0;
+
+                // Find Busiest Day
+                const busiestDayObj = engagementData.reduce((max, obj) => obj.reports > max.reports ? obj : max, { reports: -1, date: new Date().toISOString() });
+                const busiestDayLabel = busiestDayObj.reports > 0 ? format(new Date(busiestDayObj.date), 'EEEE, MMM do') : 'N/A';
+                const peakReports = busiestDayObj.reports;
+
+
                 setData({
                     recent_activity_volume: formattedVolume, // actually array of {date, count}
                     formattedTrends,
@@ -213,6 +270,17 @@ export default function AnalyticsPage() {
                     top_stations,
                     regional_stats,
                     verification_data: formattedVerification,
+                    activities,
+                    engagementData,
+                    totalUsersCount: totalUsersCount || 0,
+                    activeUsersCount,
+                    totalStationsCount: totalStationsCount || 0,
+                    verifiedStationsCount: verifiedStationsList?.length || 0,
+                    trafficGrowth,
+                    avgReportsPerDay,
+                    activationRate,
+                    busiestDayLabel,
+                    peakReports,
                     // raw counts for cards
                     total_reports_30d: reports?.length || 0,
                     total_new_users_30d: newUsers?.length || 0
@@ -238,63 +306,89 @@ export default function AnalyticsPage() {
     }
 
     return (
-        <div className="flex flex-col gap-6 p-6">
-            <div className="flex flex-col gap-2">
-                <h1 className="text-3xl font-bold tracking-tight font-headline flex items-center gap-2">
-                    <TrendingUp className="h-8 w-8 text-primary" />
-                    Analytics Dashboard
-                </h1>
-                <p className="text-muted-foreground">Deep dive into prices, user growth, and system usage.</p>
+        <div className="flex flex-col gap-8 w-full">
+            <header className="flex flex-col md:flex-row justify-between items-start md:items-center p-8 bg-card rounded-3xl border shadow-sm">
+                <div>
+                    <h1 className="text-2xl font-black tracking-tight mt-0 mb-2 font-headline flex items-center gap-2">
+                        <TrendingUp className="h-6 w-6 text-primary" />
+                        Platform Analytics Dashboard
+                    </h1>
+                    <p className="text-muted-foreground m-0">In-depth analysis of platform-wide traffic, user growth, and engagement.</p>
+                </div>
+                <div className="mt-4 md:mt-0 px-4 py-2 bg-primary/10 text-primary font-semibold text-sm rounded-full">
+                    Last 30 Days
+                </div>
+            </header>
+
+            {/* Stat Cards Row */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <SystemConversionEfficiency
+                    conversionRate={data?.activationRate || 0}
+                    description="Overall community participation health."
+                />
+                <PlatformReachStatCard
+                    totalUsers={data?.totalUsersCount || 0}
+                    newUsers30d={data?.total_new_users_30d || 0}
+                    activeUsers={data?.activeUsersCount || 0}
+                    details={{
+                        totalStations: data?.totalStationsCount || 0,
+                        verifiedStations: data?.verifiedStationsCount || 0,
+                        coverageBreakdown: data?.regional_stats?.map((r: any) => ({ region: r.region, users: r.active_users })) || []
+                    }}
+                />
+                <PlatformTrafficStatCard
+                    totalReports={data?.total_reports_30d || 0}
+                    avgPerDay={data?.avgReportsPerDay || 0}
+                    growth={data?.trafficGrowth || 0}
+                    dailyBreakdown={data?.recent_activity_volume || []}
+                />
+                <GlobalBusiestDayStatCard
+                    busiestDayLabel={data?.busiestDayLabel || 'N/A'}
+                    peakReports={data?.peakReports || 0}
+                />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Total Reports (30d)</CardTitle>
-                        <Activity className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {data?.total_reports_30d?.toLocaleString() || 0}
+            {/* Main Engagement Charts Row */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+                <div className="lg:col-span-2 bg-card rounded-3xl border border-border shadow-sm p-8 flex flex-col">
+                    <div className="mb-6 flex space-x-3 items-center">
+                        <div className="p-2 bg-primary/10 text-primary rounded-lg shrink-0">
+                            <Zap size={20} />
                         </div>
-                        <p className="text-xs text-muted-foreground">Last 30 days activity</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">Avg Petrol Price</CardTitle>
-                        <Fuel className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            ₦{data?.formattedTrends[data.formattedTrends.length - 1]?.['PMS'] || '---'}
+                        <div>
+                            <h2 className="m-0 text-lg font-bold">Platform Engagement Trend</h2>
+                            <p className="m-0 text-sm text-muted-foreground mt-1">Daily reports vs new user registrations.</p>
                         </div>
-                        <p className="text-xs text-muted-foreground">Latest daily average</p>
-                    </CardContent>
-                </Card>
-                <Card>
-                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-                        <CardTitle className="text-sm font-medium">New Users (30d)</CardTitle>
-                        <Users className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">
-                            {data?.total_new_users_30d?.toLocaleString() || 0}
+                    </div>
+                    <div className="flex-1 min-h-[300px]">
+                        <PlatformEngagementChart data={data?.engagementData || []} />
+                    </div>
+                </div>
+
+                <div className="bg-card rounded-3xl border border-border shadow-sm p-8 flex flex-col max-h-[500px]">
+                    <div className="mb-6 flex space-x-3 items-center">
+                        <div className="p-2 bg-primary/10 text-primary rounded-lg shrink-0">
+                            <Activity size={20} />
                         </div>
-                    </CardContent>
-                </Card>
+                        <div>
+                            <h2 className="m-0 text-lg font-bold">Live Activity Feed</h2>
+                            <p className="m-0 text-sm text-muted-foreground mt-1">Real-time platform action.</p>
+                        </div>
+                    </div>
+                    <GlobalActivityFeed activities={data?.activities || []} />
+                </div>
             </div>
 
+            {/* Original Secondary Charts Row */}
             <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-7">
-
-                {/* Main Chart: Price Trends */}
-                <Card className="col-span-4">
+                {/* Secondary Chart: Traditional Price Trends */}
+                <Card className="col-span-4 rounded-3xl shadow-sm bg-card border-border">
                     <CardHeader>
-                        <CardTitle>Price Trends (Last 30 Days)</CardTitle>
+                        <CardTitle>Fuel Price Trends</CardTitle>
                         <CardDescription>Daily average price fluctuations by fuel type.</CardDescription>
                     </CardHeader>
                     <CardContent className="pl-2">
-                        <ResponsiveContainer width="100%" height={350}>
+                        <ResponsiveContainer width="100%" height={300}>
                             <LineChart data={data?.formattedTrends}>
                                 <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E5E7EB" />
                                 <XAxis
@@ -312,7 +406,7 @@ export default function AnalyticsPage() {
                                     tickFormatter={(value) => `₦${value}`}
                                 />
                                 <Tooltip
-                                    contentStyle={{ backgroundColor: '#fff', borderRadius: '8px', border: '1px solid #e5e7eb' }}
+                                    contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }}
                                     formatter={(value: any) => [`₦${value}`, 'Price']}
                                 />
                                 <Legend />
@@ -325,14 +419,14 @@ export default function AnalyticsPage() {
                     </CardContent>
                 </Card>
 
-                {/* Side Chart: Fuel Mix */}
-                <Card className="col-span-3">
+                {/* Secondary Chart: Fuel Mix */}
+                <Card className="col-span-3 rounded-3xl shadow-sm bg-card border-border">
                     <CardHeader>
                         <CardTitle>Report Distribution</CardTitle>
                         <CardDescription>Breakdown of reports by fuel type.</CardDescription>
                     </CardHeader>
                     <CardContent>
-                        <ResponsiveContainer width="100%" height={350}>
+                        <ResponsiveContainer width="100%" height={300}>
                             <PieChart>
                                 <Pie
                                     data={data?.fuel_distribution}
@@ -345,11 +439,11 @@ export default function AnalyticsPage() {
                                     dataKey="count"
                                     nameKey="fuel_type"
                                 >
-                                    {data?.fuel_distribution.map((entry: any, index: number) => (
+                                    {data?.fuel_distribution?.map((entry: any, index: number) => (
                                         <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                                     ))}
                                 </Pie>
-                                <Tooltip />
+                                <Tooltip contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))' }} />
                                 <Legend verticalAlign="bottom" height={36} />
                             </PieChart>
                         </ResponsiveContainer>
@@ -457,7 +551,7 @@ export default function AnalyticsPage() {
             </div>
 
             {/* Data Verification Section */}
-            <Card className="mt-6">
+            <Card className="mt-6 rounded-3xl shadow-sm bg-card border-border">
                 <CardHeader>
                     <CardTitle>Source Data Verification</CardTitle>
                     <CardDescription>Recent reports used to calculate the analytics above. Use this to verify data integrity.</CardDescription>
@@ -487,9 +581,9 @@ export default function AnalyticsPage() {
                                     </TableCell>
                                     <TableCell>{item.region}</TableCell>
                                     <TableCell>
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${item.fuel_type === 'PMS' ? 'bg-red-100 text-red-800' :
-                                                item.fuel_type === 'AGO' ? 'bg-blue-100 text-blue-800' :
-                                                    'bg-gray-100 text-gray-800'
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${item.fuel_type === 'PMS' ? 'bg-red-500/10 text-red-500' :
+                                            item.fuel_type === 'AGO' ? 'bg-blue-500/10 text-blue-500' :
+                                                'bg-gray-500/10 text-gray-500'
                                             }`}>
                                             {item.fuel_type}
                                         </span>
@@ -510,6 +604,8 @@ export default function AnalyticsPage() {
                     </Table>
                 </CardContent>
             </Card>
+
+            <GlobalAnalyticsHelp />
         </div>
     )
 }

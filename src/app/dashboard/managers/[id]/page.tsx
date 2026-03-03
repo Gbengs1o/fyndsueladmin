@@ -26,7 +26,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { ManagerActivityTimeline } from "@/components/dashboard/manager-activity-timeline"
-import { ManagerAnalyticsCharts } from "@/components/dashboard/manager-analytics-charts"
+import ManagerAnalytics from '@/components/dashboard/station-manager-analytics-view/ManagerAnalytics'
+import ManagerOverview from "@/components/dashboard/station-manager-view/ManagerOverview"
+import ManagerPricing from '@/components/dashboard/station-manager-pricing-view/ManagerPricing'
+import ManagerReputation from '@/components/dashboard/station-manager-reputation-view/ManagerReputation'
+import ManagerPromotions from '@/components/dashboard/station-manager-promotions-view/ManagerPromotions'
 
 import { useToast } from "@/hooks/use-toast"
 
@@ -281,65 +285,90 @@ export default function ManagerProfilePage() {
     return (
         <div className="container max-w-7xl mx-auto py-8 px-4 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header Section */}
-            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                    <Button
-                        variant="ghost"
-                        size="icon"
-                        className="rounded-full shrink-0"
-                        onClick={() => router.push('/dashboard/managers')}
-                    >
-                        <ArrowLeft className="h-5 w-5" />
-                    </Button>
-                    <div className="flex items-center gap-5">
-                        <Avatar className="h-20 w-20 border-4 border-background shadow-xl">
-                            <AvatarImage src={manager.avatar_url || ''} />
-                            <AvatarFallback className="bg-primary/5 text-primary text-2xl font-black">
-                                {manager.full_name?.charAt(0)}
-                            </AvatarFallback>
-                        </Avatar>
-                        <div className="space-y-1">
-                            <div className="flex items-center gap-3">
-                                <h1 className="text-3xl font-black tracking-tight">{manager.full_name}</h1>
-                                <Badge className={manager.verification_status === 'verified' ? "bg-emerald-500 hover:bg-emerald-600" : "bg-amber-500 hover:bg-amber-600"}>
-                                    {manager.verification_status === 'verified' ? "Verified" : "Pending"}
-                                </Badge>
-                                {manager.is_banned && <Badge variant="destructive">Banned</Badge>}
+            <div className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-primary/10 via-background to-background border shadow-xl shadow-primary/5">
+                {/* Decorative Elements */}
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-primary/10 rounded-full blur-[100px] -translate-y-1/2 translate-x-1/3 object-cover opacity-50 pointer-events-none" />
+                <div className="absolute bottom-0 left-0 w-[300px] h-[300px] bg-blue-500/10 rounded-full blur-[80px] translate-y-1/2 -translate-x-1/2 object-cover opacity-50 pointer-events-none" />
+
+                <div className="relative z-10 p-8 md:p-10 flex flex-col md:flex-row md:items-start justify-between gap-8">
+                    <div className="flex flex-col md:flex-row items-start md:items-center gap-6 md:gap-8">
+                        <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute top-8 left-8 rounded-full h-10 w-10 bg-background/50 backdrop-blur-md hover:bg-background/80 shadow-sm border border-black/5"
+                            onClick={() => router.push('/dashboard/managers')}
+                        >
+                            <ArrowLeft className="h-5 w-5" />
+                        </Button>
+
+                        <div className="flex items-center gap-6 mt-12 md:mt-0 md:ml-16">
+                            <div className="relative">
+                                <Avatar className="h-28 w-28 border-[6px] border-background shadow-2xl">
+                                    <AvatarImage src={manager.avatar_url || ''} className="object-cover" />
+                                    <AvatarFallback className="bg-gradient-to-br from-primary/20 to-primary/5 text-primary text-4xl font-black">
+                                        {manager.full_name?.charAt(0)}
+                                    </AvatarFallback>
+                                </Avatar>
+                                {manager.verification_status === 'verified' && (
+                                    <div className="absolute -bottom-2 -right-2 bg-emerald-500 text-white p-1.5 rounded-full border-4 border-background shadow-lg">
+                                        <CheckCircle2 className="h-5 w-5" />
+                                    </div>
+                                )}
                             </div>
-                            <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium">
-                                <span className="flex items-center gap-1.5"><Mail className="h-4 w-4" /> {manager.email}</span>
-                                <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4" /> Joined {manager.joined_at && isValid(new Date(manager.joined_at)) ? format(new Date(manager.joined_at), 'MMM yyyy') : 'N/A'}</span>
+                            <div className="space-y-2">
+                                <div className="flex items-center gap-3">
+                                    <h1 className="text-4xl font-black tracking-tight">{manager.full_name}</h1>
+                                    <Badge variant="outline" className={`font-black uppercase tracking-widest text-[10px] py-1 px-3 ${manager.verification_status === 'verified'
+                                        ? "border-emerald-500/30 bg-emerald-50 text-emerald-600"
+                                        : "border-amber-500/30 bg-amber-50 text-amber-600"
+                                        }`}>
+                                        {manager.verification_status === 'verified' ? "Verified" : "Pending"}
+                                    </Badge>
+                                    {manager.is_banned && <Badge variant="destructive" className="font-black uppercase tracking-widest text-[10px] py-1 px-3">Banned</Badge>}
+                                </div>
+                                <div className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-muted-foreground font-medium">
+                                    <div className="flex items-center gap-2 bg-background/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-black/5">
+                                        <Mail className="h-4 w-4 text-primary" />
+                                        <span>{manager.email}</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 bg-background/50 backdrop-blur-sm px-3 py-1.5 rounded-full border border-black/5">
+                                        <Calendar className="h-4 w-4 text-primary" />
+                                        <span>Joined {manager.joined_at && isValid(new Date(manager.joined_at)) ? format(new Date(manager.joined_at), 'MMM yyyy') : 'N/A'}</span>
+                                    </div>
+                                </div>
                             </div>
                         </div>
                     </div>
-                </div>
-                <div className="flex items-center gap-3">
-                    <Button
-                        variant={manager.is_banned ? "outline" : "destructive"}
-                        className="font-bold"
-                        onClick={handleToggleBan}
-                    >
-                        {manager.is_banned ? 'Unban Account' : 'Ban Account'}
-                    </Button>
+
+                    <div className="flex items-center gap-3 mt-4 md:mt-0">
+                        <Button
+                            variant={manager.is_banned ? "outline" : "destructive"}
+                            className={`font-black rounded-xl px-8 shadow-lg ${!manager.is_banned ? 'shadow-red-500/20' : ''}`}
+                            onClick={handleToggleBan}
+                        >
+                            {manager.is_banned ? 'Unban Account' : 'Ban Account'}
+                        </Button>
+                    </div>
                 </div>
             </div>
 
             {/* Quick Stats Grid */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                 {[
-                    { label: 'Trust Score', value: `${manager.trust_score}%`, icon: Shield, color: 'text-blue-600', bg: 'bg-blue-50' },
-                    { label: 'Response Rate', value: `${manager.response_rate}%`, icon: Zap, color: 'text-amber-600', bg: 'bg-amber-50' },
-                    { label: 'Total Reviews', value: manager.total_reviews, icon: MessageSquare, color: 'text-purple-600', bg: 'bg-purple-50' },
-                    { label: 'Reward Points', value: manager.profiles?.point_transactions?.reduce((sum, t) => sum + t.amount, 0) || 0, icon: Star, color: 'text-emerald-600', bg: 'bg-emerald-50' },
+                    { label: 'Trust Score', value: `${manager.trust_score}%`, icon: Shield, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
+                    { label: 'Response Rate', value: `${manager.response_rate}%`, icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
+                    { label: 'Total Reviews', value: manager.total_reviews, icon: MessageSquare, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
+                    { label: 'Reward Points', value: manager.profiles?.point_transactions?.reduce((sum, t) => sum + t.amount, 0) || 0, icon: Star, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
                 ].map((stat, i) => (
-                    <Card key={i} className="border-none shadow-sm overflow-hidden">
-                        <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-2">
-                            <div className={`p-3 rounded-2xl ${stat.bg} ${stat.color}`}>
+                    <Card key={i} className={`border ${stat.border} shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-1 bg-gradient-to-br from-background to-muted/20 relative group`}>
+                        <div className={`absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${stat.bg}`} />
+                        <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-3 relative z-10">
+                            <div className={`p-3.5 rounded-2xl ${stat.bg} ${stat.color} ring-4 ring-background shadow-inner transition-transform duration-500 group-hover:scale-110`}>
                                 <stat.icon className="h-6 w-6" />
                             </div>
-                            <div className="space-y-0.5">
-                                <p className="text-[10px] uppercase font-bold tracking-widest text-muted-foreground">{stat.label}</p>
-                                <p className={`text-2xl font-black ${stat.color}`}>{stat.value}</p>
+                            <div className="space-y-1">
+                                <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">{stat.label}</p>
+                                <p className="text-3xl font-black tracking-tight">{stat.value}</p>
                             </div>
                         </CardContent>
                     </Card>
@@ -348,56 +377,74 @@ export default function ManagerProfilePage() {
 
             {/* Main Content Tabs */}
             <Tabs defaultValue="overview" className="w-full">
-                <TabsList className="w-full justify-start h-14 bg-transparent gap-8 p-0 border-b rounded-none mb-6">
-                    {['overview', 'activity', 'analytics', 'governance', 'station'].map((tab) => (
-                        <TabsTrigger
-                            key={tab}
-                            value={tab}
-                            className="h-full rounded-none border-b-2 border-transparent data-[state=active]:border-primary data-[state=active]:bg-transparent px-2 text-base font-bold capitalize transition-all"
-                        >
-                            {tab}
-                        </TabsTrigger>
-                    ))}
-                </TabsList>
+                <div className="relative mb-8">
+                    <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-background pointer-events-none z-10 w-full h-full" />
+                    <ScrollArea className="w-full whitespace-nowrap rounded-2xl border bg-muted/30 p-1.5 shadow-sm">
+                        <TabsList className="w-full flex justify-start h-12 bg-transparent gap-2 p-0">
+                            {['overview', 'activity', 'analytics', 'governance', 'station', 'manager-dashboard', 'manager-pricing', 'manager-reputation', 'manager-promotions'].map((tab) => (
+                                <TabsTrigger
+                                    key={tab}
+                                    value={tab}
+                                    className="h-full rounded-xl px-4 text-sm font-bold capitalize transition-all shrink-0 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md hover:bg-muted/50 data-[state=active]:hover:bg-primary"
+                                >
+                                    {tab === 'manager-dashboard' ? "Manager's View" : tab === 'manager-pricing' ? "Pricing" : tab === 'manager-reputation' ? "Reputation" : tab === 'manager-promotions' ? "Promotions" : tab}
+                                </TabsTrigger>
+                            ))}
+                        </TabsList>
+                    </ScrollArea>
+                </div>
 
                 <div className="min-h-[400px]">
                     <TabsContent value="overview" className="animate-in fade-in slide-in-from-left-4 duration-300 m-0">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-                            <Card className="md:col-span-2 border shadow-sm">
-                                <CardHeader>
-                                    <CardTitle className="text-lg font-bold">About Manager</CardTitle>
+                            <Card className="md:col-span-2 border shadow-sm rounded-3xl overflow-hidden bg-gradient-to-br from-background to-muted/10">
+                                <CardHeader className="bg-muted/10 border-b p-6">
+                                    <CardTitle className="text-xl font-black">About Manager</CardTitle>
                                     <CardDescription>Biographical and professional details</CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="grid grid-cols-2 gap-8">
-                                        <div className="space-y-1">
-                                            <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Verification Proof</p>
-                                            <div className="aspect-video relative rounded-2xl overflow-hidden border bg-muted/20 group">
+                                <CardContent className="p-8 space-y-8">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                                        <div className="space-y-3">
+                                            <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest flex items-center gap-2">
+                                                <div className="h-1.5 w-1.5 rounded-full bg-primary" />
+                                                Verification Proof
+                                            </p>
+                                            <div className="aspect-[4/3] relative rounded-2xl overflow-hidden border-2 bg-muted/20 group">
                                                 {manager.verification_photo_url ? (
                                                     <img
                                                         src={manager.verification_photo_url}
                                                         alt="Proof"
-                                                        className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
+                                                        className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-105"
                                                     />
                                                 ) : (
-                                                    <div className="w-full h-full flex items-center justify-center text-muted-foreground italic text-xs">No photo submitted</div>
+                                                    <div className="w-full h-full flex flex-col items-center justify-center text-muted-foreground italic gap-2 opacity-50">
+                                                        <Shield className="h-8 w-8" />
+                                                        <span className="text-xs font-bold">No photo submitted</span>
+                                                    </div>
                                                 )}
                                             </div>
                                         </div>
-                                        <div className="space-y-4">
-                                            <div>
-                                                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Contact Info</p>
-                                                <div className="mt-2 space-y-2">
-                                                    <p className="text-sm font-semibold">{manager.email}</p>
-                                                    <p className="text-sm text-muted-foreground">{manager.phone || 'No phone provided'}</p>
+                                        <div className="space-y-6">
+                                            <div className="p-5 rounded-2xl bg-muted/30 border border-black/5 space-y-1">
+                                                <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">Contact Information</p>
+                                                <div className="mt-2 space-y-3">
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 rounded-xl bg-background shadow-sm"><Mail className="h-4 w-4 text-primary" /></div>
+                                                        <p className="text-sm font-bold">{manager.email}</p>
+                                                    </div>
+                                                    <div className="flex items-center gap-3">
+                                                        <div className="p-2 rounded-xl bg-background shadow-sm"><User className="h-4 w-4 text-primary" /></div>
+                                                        <p className="text-sm font-bold text-muted-foreground">{manager.phone || 'No phone provided'}</p>
+                                                    </div>
                                                 </div>
                                             </div>
-                                            <div>
-                                                <p className="text-[10px] uppercase font-bold text-muted-foreground tracking-widest">Profile Status</p>
-                                                <div className="mt-2">
-                                                    <Badge variant="outline" className="font-bold border-primary/20 bg-primary/5 text-primary">
+                                            <div className="p-5 rounded-2xl bg-muted/30 border border-black/5 space-y-2">
+                                                <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest">System Status</p>
+                                                <div className="flex items-center gap-3 mt-2">
+                                                    <Badge variant="outline" className={`font-black uppercase tracking-widest py-1 border-primary/20 ${manager.verification_status === 'verified' ? 'bg-emerald-50 text-emerald-600' : 'bg-primary/5 text-primary'}`}>
                                                         {manager.verification_status?.toUpperCase() || 'PENDING'}
                                                     </Badge>
+                                                    {manager.is_banned && <Badge variant="destructive" className="font-black uppercase tracking-widest py-1">Access Revoked</Badge>}
                                                 </div>
                                             </div>
                                         </div>
@@ -405,33 +452,36 @@ export default function ManagerProfilePage() {
                                 </CardContent>
                             </Card>
 
-                            <Card className="border shadow-sm">
-                                <CardHeader>
-                                    <CardTitle className="text-lg font-bold">Performance Radar</CardTitle>
-                                    <CardDescription>Current reliability summary</CardDescription>
+                            <Card className="border shadow-sm rounded-3xl overflow-hidden bg-gradient-to-b from-background to-muted/10 relative">
+                                <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                                <CardHeader className="bg-muted/10 border-b p-6">
+                                    <CardTitle className="text-xl font-black">Performance Radar</CardTitle>
+                                    <CardDescription>Behavioral insights</CardDescription>
                                 </CardHeader>
-                                <CardContent className="space-y-6">
-                                    <div className="space-y-4">
+                                <CardContent className="p-6 space-y-8">
+                                    <div className="space-y-3">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm font-medium">Reporting Accuracy</span>
-                                            <span className="text-sm font-black text-emerald-600">{intelligenceData?.performanceRadar?.accuracy || 0}%</span>
+                                            <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Reporting Accuracy</span>
+                                            <span className="text-lg font-black text-emerald-600">{intelligenceData?.performanceRadar?.accuracy || 0}%</span>
                                         </div>
-                                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                                            <div className="h-full bg-emerald-500" style={{ width: `${intelligenceData?.performanceRadar?.accuracy || 0}%` }} />
+                                        <div className="w-full h-2.5 bg-muted/50 rounded-full overflow-hidden shadow-inner">
+                                            <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full transition-all duration-1000" style={{ width: `${intelligenceData?.performanceRadar?.accuracy || 0}%` }} />
                                         </div>
                                     </div>
-                                    <div className="space-y-4">
+                                    <div className="space-y-3">
                                         <div className="flex items-center justify-between">
-                                            <span className="text-sm font-medium">Avg. Response Time</span>
-                                            <span className="text-sm font-black text-amber-600">{intelligenceData?.performanceRadar?.responseTime || 0}h</span>
+                                            <span className="text-sm font-bold text-muted-foreground uppercase tracking-wider">Avg. Response Time</span>
+                                            <span className="text-lg font-black text-amber-600">{intelligenceData?.performanceRadar?.responseTime || 0}h</span>
                                         </div>
-                                        <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                                            <div className="h-full bg-amber-500" style={{ width: `${Math.min(100, (24 / (intelligenceData?.performanceRadar?.responseTime || 24)) * 100)}%` }} />
+                                        <div className="w-full h-2.5 bg-muted/50 rounded-full overflow-hidden shadow-inner">
+                                            <div className="h-full bg-gradient-to-r from-amber-400 to-amber-600 rounded-full transition-all duration-1000" style={{ width: `${Math.min(100, (24 / (intelligenceData?.performanceRadar?.responseTime || 24)) * 100)}%` }} />
                                         </div>
                                     </div>
-                                    <div className="p-4 bg-primary/5 rounded-2xl border border-primary/10">
-                                        <p className="text-xs text-primary leading-relaxed">
-                                            <strong>Insight:</strong> {intelligenceData?.performanceRadar?.insight || "Calculating behavioral insights..."}
+                                    <div className="p-5 bg-gradient-to-br from-primary/10 to-primary/5 rounded-2xl border-2 border-primary/10 relative overflow-hidden group">
+                                        <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity"><Zap className="h-12 w-12 text-primary" /></div>
+                                        <p className="text-xs font-bold text-primary leading-relaxed relative z-10">
+                                            <span className="block text-[10px] uppercase font-black tracking-widest mb-1 opacity-70">AI Insight</span>
+                                            {intelligenceData?.performanceRadar?.insight || "Calculating behavioral insights..."}
                                         </p>
                                     </div>
                                 </CardContent>
@@ -440,13 +490,13 @@ export default function ManagerProfilePage() {
                     </TabsContent>
 
                     <TabsContent value="activity" className="animate-in fade-in slide-in-from-right-4 duration-300 m-0">
-                        <Card className="border shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between">
+                        <Card className="border shadow-sm rounded-3xl overflow-hidden bg-gradient-to-br from-background to-muted/10">
+                            <CardHeader className="flex flex-row items-center justify-between bg-muted/10 border-b p-6">
                                 <div>
-                                    <CardTitle className="text-lg font-bold">Operational Timeline</CardTitle>
+                                    <CardTitle className="text-xl font-black">Operational Timeline</CardTitle>
                                     <CardDescription>Complete behavioral audit feed</CardDescription>
                                 </div>
-                                {isIntelligenceLoading && <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />}
+                                {isIntelligenceLoading && <RefreshCw className="h-5 w-5 animate-spin text-primary" />}
                             </CardHeader>
                             <CardContent className="p-8">
                                 <ManagerActivityTimeline activities={intelligenceData?.activities || []} />
@@ -455,23 +505,13 @@ export default function ManagerProfilePage() {
                     </TabsContent>
 
                     <TabsContent value="analytics" className="animate-in fade-in zoom-in-95 duration-300 m-0">
-                        <Card className="border shadow-sm">
-                            <CardHeader className="flex flex-row items-center justify-between">
-                                <div>
-                                    <CardTitle className="text-lg font-bold">Performance Charts</CardTitle>
-                                    <CardDescription>Historical trend analysis</CardDescription>
-                                </div>
-                            </CardHeader>
-                            <CardContent className="p-6">
-                                <ManagerAnalyticsCharts data={intelligenceData?.analytics || []} />
-                            </CardContent>
-                        </Card>
+                        <ManagerAnalytics stationId={manager.station_id} />
                     </TabsContent>
 
                     <TabsContent value="governance" className="animate-in fade-in slide-in-from-bottom-4 duration-300 m-0">
-                        <Card className="border shadow-sm">
-                            <CardHeader>
-                                <CardTitle className="text-lg font-bold">Administrative Governance</CardTitle>
+                        <Card className="border shadow-sm rounded-3xl overflow-hidden bg-gradient-to-br from-background to-muted/10">
+                            <CardHeader className="bg-muted/10 border-b p-6">
+                                <CardTitle className="text-xl font-black">Administrative Governance</CardTitle>
                                 <CardDescription>Audit trail of actions taken on this manager</CardDescription>
                             </CardHeader>
                             <CardContent className="p-8">
@@ -483,29 +523,32 @@ export default function ManagerProfilePage() {
                     <TabsContent value="station" className="animate-in fade-in slide-in-from-up-4 duration-300 m-0">
                         {manager.stations ? (
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                                <Card className="border shadow-sm">
-                                    <CardContent className="p-8 space-y-6">
-                                        <div className="flex items-start gap-4">
-                                            <div className="p-4 bg-primary/10 rounded-2xl text-primary">
-                                                <Building2 className="h-8 w-8" />
+                                <Card className="border shadow-sm rounded-3xl overflow-hidden bg-gradient-to-b from-background to-muted/10">
+                                    <CardContent className="p-8 space-y-8">
+                                        <div className="flex items-start gap-5">
+                                            <div className="p-5 bg-gradient-to-br from-primary/20 to-primary/5 rounded-2xl text-primary border border-primary/10 shadow-inner">
+                                                <Building2 className="h-10 w-10" />
                                             </div>
-                                            <div className="space-y-1">
-                                                <h3 className="text-2xl font-black">{manager.stations.name}</h3>
-                                                <p className="text-muted-foreground flex items-center gap-1.5"><MapPin className="h-4 w-4" /> {manager.stations.address}</p>
+                                            <div className="space-y-2">
+                                                <h3 className="text-3xl font-black tracking-tight">{manager.stations.name}</h3>
+                                                <p className="text-muted-foreground font-medium flex items-center gap-2">
+                                                    <MapPin className="h-4 w-4 text-primary" />
+                                                    {manager.stations.address}
+                                                </p>
                                             </div>
                                         </div>
-                                        <div className="grid grid-cols-2 gap-4 pt-4">
-                                            <div className="p-5 border rounded-2xl bg-muted/5 space-y-2">
-                                                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">City / State</p>
-                                                <p className="font-bold">{manager.stations.city}, {manager.stations.state}</p>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="p-5 border-2 border-muted/50 rounded-2xl bg-background space-y-2 shadow-sm transition-all hover:border-primary/20 hover:shadow-md">
+                                                <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest flex items-center gap-2"><MapPin className="h-3 w-3" /> Location</p>
+                                                <p className="text-base font-bold">{manager.stations.city}, {manager.stations.state}</p>
                                             </div>
-                                            <div className="p-5 border rounded-2xl bg-muted/5 space-y-2">
-                                                <p className="text-[10px] text-muted-foreground uppercase font-bold tracking-widest">Active Flags</p>
-                                                <p className="font-bold text-red-500">{manager.stations.flagged_stations?.length || 0} issues reported</p>
+                                            <div className="p-5 border-2 border-muted/50 rounded-2xl bg-background space-y-2 shadow-sm transition-all hover:border-red-500/20 hover:shadow-md">
+                                                <p className="text-[10px] text-muted-foreground uppercase font-black tracking-widest flex items-center gap-2"><AlertTriangle className="h-3 w-3" /> Active Flags</p>
+                                                <p className="text-base font-bold text-red-500">{manager.stations.flagged_stations?.length || 0} issues reported</p>
                                             </div>
                                         </div>
                                         <Button
-                                            className="w-full h-14 rounded-2xl text-base font-bold shadow-xl"
+                                            className="w-full h-14 rounded-xl text-base font-black shadow-xl shadow-primary/20 bg-primary hover:bg-primary/90"
                                             onClick={() => window.open(`https://www.google.com/maps/search/?api=1&query=${manager.stations?.latitude},${manager.stations?.longitude}`, '_blank')}
                                         >
                                             <MapPin className="mr-2 h-5 w-5" /> Navigation to Station
@@ -513,35 +556,40 @@ export default function ManagerProfilePage() {
                                     </CardContent>
                                 </Card>
 
-                                <Card className="border shadow-sm overflow-hidden">
+                                <Card className="border shadow-sm rounded-3xl overflow-hidden bg-background">
                                     <ScrollArea className="h-[430px]">
-                                        <CardHeader className="sticky top-0 bg-background/80 backdrop-blur-md z-10 border-b">
-                                            <CardTitle className="text-lg font-bold">Recent User Reviews</CardTitle>
+                                        <CardHeader className="sticky top-0 bg-background/80 backdrop-blur-xl z-10 border-b p-6">
+                                            <CardTitle className="text-xl font-black">Recent User Reviews</CardTitle>
                                         </CardHeader>
-                                        <div className="p-6 space-y-6">
+                                        <div className="p-6 space-y-4 bg-muted/5">
                                             {manager.stations.reviews.length === 0 ? (
-                                                <div className="text-center py-20 text-muted-foreground italic">No feedback received for this station yet.</div>
+                                                <div className="flex flex-col items-center justify-center py-20 text-muted-foreground italic space-y-3 opacity-60">
+                                                    <MessageSquare className="h-10 w-10" />
+                                                    <span>No feedback received for this station yet.</span>
+                                                </div>
                                             ) : (
-                                                manager.stations.reviews.map((review) => (
-                                                    <div key={review.id} className="p-5 border rounded-2xl space-y-4 bg-muted/5">
+                                                manager.stations.reviews.map((review: any) => (
+                                                    <div key={review.id} className="p-6 border-2 border-muted/50 rounded-2xl space-y-4 bg-background shadow-sm hover:border-primary/20 transition-all group">
                                                         <div className="flex justify-between items-start">
                                                             <div className="flex items-center gap-3">
-                                                                <Avatar className="h-8 w-8 border">
+                                                                <Avatar className="h-10 w-10 border shadow-sm group-hover:border-primary/30 transition-colors">
                                                                     <AvatarImage src={review.profiles?.avatar_url || ''} />
-                                                                    <AvatarFallback>{review.profiles?.full_name?.charAt(0) || 'U'}</AvatarFallback>
+                                                                    <AvatarFallback className="bg-primary/5 text-primary font-bold">{review.profiles?.full_name?.charAt(0) || 'U'}</AvatarFallback>
                                                                 </Avatar>
-                                                                <span className="text-sm font-bold">{review.profiles?.full_name || 'Anonymous'}</span>
+                                                                <span className="text-sm font-black">{review.profiles?.full_name || 'Anonymous User'}</span>
                                                             </div>
-                                                            <div className="flex gap-1.5">
-                                                                <Badge variant="outline" className="text-[10px] px-1.5 bg-blue-50/50">Meter: {review.rating_meter}/5</Badge>
-                                                                <Badge variant="outline" className="text-[10px] px-1.5 bg-emerald-50/50">Quality: {review.rating_quality}/5</Badge>
+                                                            <div className="flex flex-col items-end gap-1.5">
+                                                                <Badge variant="outline" className="text-[9px] px-2 py-0 border-blue-500/20 bg-blue-50 text-blue-600 font-bold uppercase tracking-widest">Meter: {review.rating_meter}/5</Badge>
+                                                                <Badge variant="outline" className="text-[9px] px-2 py-0 border-emerald-500/20 bg-emerald-50 text-emerald-600 font-bold uppercase tracking-widest">Quality: {review.rating_quality}/5</Badge>
                                                             </div>
                                                         </div>
-                                                        <p className="text-sm italic text-muted-foreground leading-relaxed">"{review.comment}"</p>
+                                                        <p className="text-sm italic font-medium leading-relaxed bg-muted/30 p-4 rounded-xl text-muted-foreground border border-black/5">"{review.comment}"</p>
                                                         {review.response && (
-                                                            <div className="p-4 bg-primary/5 border-l-4 border-primary rounded-r-2xl">
-                                                                <p className="text-[10px] font-black text-primary mb-1 uppercase tracking-widest leading-none">Manager Response</p>
-                                                                <p className="text-xs font-semibold leading-relaxed">{review.response}</p>
+                                                            <div className="p-4 bg-gradient-to-r from-primary/10 to-transparent border-l-4 border-primary rounded-r-xl ms-4">
+                                                                <p className="text-[10px] font-black text-primary mb-1.5 uppercase tracking-widest leading-none flex items-center gap-2">
+                                                                    <div className="h-1.5 w-1.5 rounded-full bg-primary" /> Manager Response
+                                                                </p>
+                                                                <p className="text-xs font-bold leading-relaxed">{review.response}</p>
                                                             </div>
                                                         )}
                                                     </div>
@@ -556,6 +604,42 @@ export default function ManagerProfilePage() {
                                 This manager has no assigned fuel station yet.
                             </div>
                         )}
+                    </TabsContent>
+
+                    <TabsContent value="manager-dashboard" className="animate-in fade-in slide-in-from-right-4 duration-300 m-0">
+                        <ManagerOverview
+                            managerId={id as string}
+                            stationId={manager.stations?.id}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="manager-pricing" className="animate-in fade-in slide-in-from-right-4 duration-300 m-0">
+                        <ManagerPricing
+                            managerId={id as string}
+                            stationId={manager.stations?.id}
+                            state={manager.stations?.state}
+                            latitude={manager.stations?.latitude}
+                            longitude={manager.stations?.longitude}
+                            currentPrices={{
+                                pms: manager.stations?.price_pms,
+                                ago: manager.stations?.price_ago,
+                                dpk: manager.stations?.price_dpk
+                            }}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="manager-reputation" className="animate-in fade-in slide-in-from-right-4 duration-300 m-0">
+                        <ManagerReputation
+                            managerId={id as string}
+                            stationId={manager.stations?.id || 0}
+                        />
+                    </TabsContent>
+
+                    <TabsContent value="manager-promotions" className="animate-in fade-in slide-in-from-right-4 duration-300 m-0">
+                        <ManagerPromotions
+                            managerId={id as string}
+                            stationId={manager.stations?.id || null}
+                        />
                     </TabsContent>
                 </div>
             </Tabs>

@@ -1,46 +1,37 @@
 
 "use client"
 
-import * as React from "react"
-import { useParams, useRouter } from "next/navigation"
-import Link from "next/link"
-import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
+import { useAuth } from "@/lib/auth-context"
+import { supabase } from "@/lib/supabase"
+import { AdvancedMarker, APIProvider, Map, Pin } from '@vis.gl/react-google-maps'
 import { format, formatDistanceToNow } from "date-fns"
 import {
-    Loader2,
-    ArrowLeft,
-    MapPin,
-    Flag,
-    DollarSign,
-    TrendingUp,
-    CheckCircle2,
-    XCircle,
-    Calendar,
+    Activity,
     AlertTriangle,
-    User,
-    Trash2,
+    ArrowLeft,
+    Calendar,
+    CheckCircle2,
+    DollarSign,
     Edit2,
     ExternalLink,
+    Flag,
+    Loader2,
+    MapPin,
+    MessageSquare,
     Shield,
     ShieldCheck,
-    ShieldX,
+    Star,
     ToggleLeft,
     ToggleRight,
-    MessageSquare,
-    Star,
-    Activity
+    Trash2,
+    TrendingUp,
+    User
 } from "lucide-react"
-import { APIProvider, Map, AdvancedMarker, Pin } from '@vis.gl/react-google-maps'
+import Link from "next/link"
+import { useParams, useRouter } from "next/navigation"
+import * as React from "react"
 
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { Badge } from "@/components/ui/badge"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Separator } from "@/components/ui/separator"
 import {
     AlertDialog,
     AlertDialogAction,
@@ -51,10 +42,17 @@ import {
     AlertDialogHeader,
     AlertDialogTitle
 } from "@/components/ui/alert-dialog"
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter, DialogClose } from "@/components/ui/dialog"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Separator } from "@/components/ui/separator"
 import { Switch } from "@/components/ui/switch"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { logAdminAction } from "@/lib/admin-logger"
 
 interface Station {
@@ -66,6 +64,7 @@ interface Station {
     status: string
     is_active: boolean
     is_verified: boolean
+    is_out_of_stock: boolean
     created_at: string
     brand: string | null
 }
@@ -271,7 +270,35 @@ export default function StationDetailPage() {
             const { error } = await supabase.from('stations').update({ is_active: !station.is_active }).eq('id', station.id)
             if (error) throw error
 
+            await logAdminAction('TOGGLE_STATUS', 'stations', station.id.toString(), {
+                new_status: !station.is_active ? 'Active' : 'Inactive'
+            })
+
             toast({ title: "Updated", description: `Station is now ${!station.is_active ? 'Active' : 'Inactive'}.` })
+            fetchStationData()
+        } catch (err: any) {
+            toast({ variant: "destructive", title: "Error", description: err.message })
+        } finally {
+            setIsProcessing(false)
+        }
+    }
+
+    const handleToggleStock = async () => {
+        if (!station) return
+        setIsProcessing(true)
+
+        try {
+            const { error } = await supabase.from('stations').update({ is_out_of_stock: !station.is_out_of_stock }).eq('id', station.id)
+            if (error) throw error
+
+            await logAdminAction('TOGGLE_STOCK', 'stations', station.id.toString(), {
+                is_out_of_stock: !station.is_out_of_stock
+            })
+
+            toast({
+                title: "Stock Status Updated",
+                description: `Station is now marked as ${!station.is_out_of_stock ? 'OUT OF STOCK' : 'IN STOCK'}.`
+            })
             fetchStationData()
         } catch (err: any) {
             toast({ variant: "destructive", title: "Error", description: err.message })
@@ -342,6 +369,7 @@ export default function StationDetailPage() {
                             <h1 className="text-2xl font-semibold tracking-tight">{station.name}</h1>
                             {station.is_verified && <ShieldCheck className="h-5 w-5 text-blue-500" />}
                             {!station.is_active && <Badge variant="secondary">Inactive</Badge>}
+                            {station.is_out_of_stock && <Badge variant="destructive">OUT OF STOCK</Badge>}
                         </div>
                         <div className="flex items-center text-muted-foreground gap-2 text-sm mt-1">
                             <MapPin className="h-4 w-4" /> {station.address}
@@ -357,6 +385,15 @@ export default function StationDetailPage() {
                         ) : (
                             <><ToggleRight className="mr-2 h-4 w-4" /> Set Active</>
                         )}
+                    </Button>
+                    <Button
+                        variant={station.is_out_of_stock ? "destructive" : "outline"}
+                        size="sm"
+                        onClick={handleToggleStock}
+                        disabled={isProcessing}
+                    >
+                        <AlertTriangle className="mr-2 h-4 w-4" />
+                        {station.is_out_of_stock ? "Mark In Stock" : "Mark Out of Stock"}
                     </Button>
                     <Button variant="outline" size="sm" onClick={() => setShowEditDialog(true)}>
                         <Edit2 className="mr-2 h-4 w-4" /> Edit
@@ -397,9 +434,9 @@ export default function StationDetailPage() {
                                 >
                                     <AdvancedMarker position={{ lat: station.latitude, lng: station.longitude }}>
                                         <Pin
-                                            background={station.is_active ? '#10b981' : '#6b7280'}
+                                            background={station.is_out_of_stock ? '#ef4444' : (station.is_active ? '#10b981' : '#6b7280')}
                                             glyphColor="white"
-                                            borderColor={station.is_active ? '#059669' : '#4b5563'}
+                                            borderColor={station.is_out_of_stock ? '#b91c1c' : (station.is_active ? '#059669' : '#4b5563')}
                                         />
                                     </AdvancedMarker>
                                 </Map>

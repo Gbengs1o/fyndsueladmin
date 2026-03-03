@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Logo } from "@/components/logo"
 import { Loader2 } from "lucide-react"
+import { LoadingLogo } from "@/components/loading-logo"
 import { useToast } from "@/hooks/use-toast"
 
 export default function LoginPage() {
@@ -79,8 +80,9 @@ export default function LoginPage() {
             </div>
           </CardContent>
           <CardFooter className="flex flex-col gap-4">
+
             <Button type="submit" className="w-full" disabled={isLoading}>
-              {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              {isLoading && <div className="mr-2"><LoadingLogo size={18} /></div>}
               Sign In
             </Button>
             <p className="text-sm text-muted-foreground text-center">

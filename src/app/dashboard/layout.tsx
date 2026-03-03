@@ -23,6 +23,7 @@ import {
 import Link from "next/link"
 import { useRouter } from "next/navigation"
 import { useEffect } from "react"
+import { LoadingScreen } from "@/components/loading-screen"
 
 import { Logo } from "@/components/logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -85,12 +86,9 @@ export default function DashboardLayout({
     }
   }, [user, isLoading, router])
 
+
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    )
+    return <LoadingScreen />
   }
 
   if (!user) {

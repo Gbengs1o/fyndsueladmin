@@ -8,6 +8,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { LoadingLogo } from "@/components/loading-logo";
 
 interface ActivityItem {
     id: string;
@@ -153,9 +154,10 @@ export function LiveActivityFeed() {
                 <CardDescription>Real-time updates across the platform</CardDescription>
             </CardHeader>
             <CardContent className="flex-1 p-0">
+
                 {loading ? (
                     <div className="flex items-center justify-center h-[300px]">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        <LoadingLogo size={40} />
                     </div>
                 ) : (
                     <ScrollArea className="h-[350px]">
