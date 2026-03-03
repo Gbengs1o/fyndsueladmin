@@ -554,8 +554,8 @@ export default function ManagerProfilePage() {
                                 </Card>
 
                                 <Card className="border shadow-sm rounded-3xl overflow-hidden bg-background">
-                                    <ScrollArea className="h-[430px]">
-                                        <CardHeader className="sticky top-0 bg-background/80 backdrop-blur-xl z-10 border-b p-6">
+                                    <div className="h-[430px] overflow-y-auto [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-track]:bg-transparent">
+                                        <CardHeader className="sticky top-0 bg-background/80 backdrop-blur-xl z-20 border-b p-6">
                                             <CardTitle className="text-xl font-black">Recent User Reviews</CardTitle>
                                         </CardHeader>
                                         <div className="p-6 space-y-4 bg-muted/5">
@@ -593,7 +593,7 @@ export default function ManagerProfilePage() {
                                                 ))
                                             )}
                                         </div>
-                                    </ScrollArea>
+                                    </div>
                                 </Card>
                             </div>
                         ) : (
