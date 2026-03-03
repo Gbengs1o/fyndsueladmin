@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { updateStationCapacity } from './actions';
 import { Settings, Info, Check, Save } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 
@@ -21,16 +21,15 @@ export default function CapacityManager({ stationId, initialCapacity, peakVisits
 
     const handleSave = async () => {
         setIsSaving(true);
-        const { error } = await supabase
-            .from('stations')
-            .update({ max_daily_capacity: capacity })
-            .eq('id', stationId);
-
-        setIsSaving(false);
-        if (!error) {
+        try {
+            await updateStationCapacity(stationId, capacity);
             setIsEditing(false);
             setShowSuccess(true);
             setTimeout(() => setShowSuccess(false), 3000);
+        } catch (error) {
+            console.error("Error updating station capacity:", error);
+        } finally {
+            setIsSaving(false);
         }
     };
 

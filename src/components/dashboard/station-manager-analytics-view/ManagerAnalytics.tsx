@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getStationAnalytics } from './actions';
 import { Users, Clock, Zap, Activity, MapPin } from 'lucide-react';
 import RevenueTrendChart from './RevenueTrendChart';
 import ActivityHistory from './ActivityHistory';
@@ -28,38 +28,19 @@ export default function ManagerAnalytics({ stationId }: ManagerAnalyticsProps) {
         const fetchAnalytics = async () => {
             setIsLoading(true);
             try {
-                // 1. Fetch Station Capacity
-                const { data: stationInfo } = await supabase
-                    .from('stations')
-                    .select('max_daily_capacity')
-                    .eq('id', stationId)
-                    .single();
+                // Fetch all data from server action to bypass RLS
+                const {
+                    stationInfo,
+                    analytics,
+                    reports,
+                    reviews,
+                    priceLogs,
+                    promos,
+                    favCount,
+                    favourites
+                } = await getStationAnalytics(stationId);
 
                 const maxCapacity = stationInfo?.max_daily_capacity || 500;
-
-                // 2. Fetch Activity Data (Last 14 Days)
-                const fourteenDaysAgo = new Date();
-                fourteenDaysAgo.setDate(fourteenDaysAgo.getDate() - 14);
-                const fourteenDaysAgoStr = fourteenDaysAgo.toISOString();
-
-                const [
-                    { data: analytics },
-                    { data: reports },
-                    { data: reviews },
-                    { data: priceLogs },
-                    { data: promos },
-                    { count: favCount },
-                    { data: favourites }
-                ] = await Promise.all([
-                    supabase.from('station_analytics').select('*').eq('station_id', stationId).order('date', { ascending: false }).limit(30),
-                    supabase.from('price_reports').select('created_at, price, user_id').eq('station_id', stationId).gte('created_at', fourteenDaysAgoStr),
-                    supabase.from('reviews').select('created_at, user_id').eq('station_id', stationId).gte('created_at', fourteenDaysAgoStr),
-                    supabase.from('price_logs').select('created_at, new_price').eq('station_id', stationId).gte('created_at', fourteenDaysAgoStr),
-                    supabase.from('station_promotions').select('views, clicks').eq('station_id', stationId),
-                    supabase.from('favourite_stations').select('*', { count: 'exact', head: true }).eq('station_id', stationId),
-                    supabase.from('favourite_stations').select('created_at, user_id').eq('station_id', stationId)
-                ]);
-
                 const totalFavourites = favCount || 0;
 
                 // 3. Synthesize Analytics from Activity
@@ -200,7 +181,7 @@ export default function ManagerAnalytics({ stationId }: ManagerAnalyticsProps) {
         };
 
         fetchAnalytics();
-    }, [stationId, supabase]);
+    }, [stationId]);
 
     if (!stationId) {
         return (

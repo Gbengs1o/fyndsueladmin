@@ -1,6 +1,6 @@
 'use client';
 
-import { supabase } from '@/lib/supabase';
+import { getPricingData } from './actions';
 import { useEffect, useState } from 'react';
 import styles from '../station-manager-view/ManagerOverview.module.css';
 import PriceUpdater from './PriceUpdater';
@@ -41,67 +41,48 @@ export default function ManagerPricing({
     useEffect(() => {
         async function fetchPricingData() {
             setLoading(true);
+            try {
+                const result = await getPricingData(stationId, state, latitude, longitude);
+                const { statePrice, nearby, allHistoryLogs } = result;
 
-            // 1. Fetch Official State Price (Fallback)
-            const { data: officialPriceData } = await supabase
-                .from('official_prices')
-                .select('pms_price')
-                .eq('state', state)
-                .eq('brand', 'all')
-                .single();
+                const formattedCompetitors = (nearby || [])
+                    .map((c: any) => {
+                        const lat1 = latitude;
+                        const lon1 = longitude;
+                        const lat2 = c.latitude || 0;
+                        const lon2 = c.longitude || 0;
 
-            const statePrice = parseFloat(officialPriceData?.pms_price as any) || 650;
+                        const R = 6371;
+                        const dLat = (lat2 - lat1) * Math.PI / 180;
+                        const dLon = (lon2 - lon1) * Math.PI / 180;
+                        const a =
+                            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                        const dist = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
 
-            // 2. Fetch Nearest Competitors
-            const { data: nearby } = await supabase
-                .from('stations')
-                .select('id, name, brand, price_pms, latitude, longitude')
-                .eq('state', state)
-                .neq('id', stationId)
-                .limit(100);
+                        return { ...c, distanceValue: dist, distance: `${dist.toFixed(1)}km` };
+                    })
+                    .sort((a, b) => a.distanceValue - b.distanceValue)
+                    .slice(0, 5)
+                    .map(c => ({
+                        ...c,
+                        price_pms: parseFloat(c.price_pms as any) || statePrice
+                    }));
 
-            const formattedCompetitors = (nearby || [])
-                .map(c => {
-                    const lat1 = latitude;
-                    const lon1 = longitude;
-                    const lat2 = c.latitude || 0;
-                    const lon2 = c.longitude || 0;
+                const pmsHistory = allHistoryLogs?.filter((l: any) => l.fuel_type === 'pms').reverse() || [];
 
-                    const R = 6371;
-                    const dLat = (lat2 - lat1) * Math.PI / 180;
-                    const dLon = (lon2 - lon1) * Math.PI / 180;
-                    const a =
-                        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                    const dist = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-
-                    return { ...c, distanceValue: dist, distance: `${dist.toFixed(1)}km` };
-                })
-                .sort((a, b: any) => a.distanceValue - b.distanceValue)
-                .slice(0, 5)
-                .map(c => ({
-                    ...c,
-                    price_pms: parseFloat(c.price_pms as any) || statePrice
-                }));
-
-            // 3. Fetch Price History Logs
-            const { data: allHistoryLogs } = await supabase
-                .from('price_logs')
-                .select('*')
-                .eq('station_id', stationId)
-                .order('created_at', { ascending: false })
-                .limit(50);
-
-            const pmsHistory = allHistoryLogs?.filter(l => l.fuel_type === 'pms').reverse() || [];
-
-            setData({
-                statePrice,
-                formattedCompetitors,
-                allHistoryLogs: allHistoryLogs || [],
-                pmsHistory
-            });
-            setLoading(false);
+                setData({
+                    statePrice,
+                    formattedCompetitors,
+                    allHistoryLogs: allHistoryLogs || [],
+                    pmsHistory
+                });
+            } catch (error) {
+                console.error("Error fetching pricing data:", error);
+            } finally {
+                setLoading(false);
+            }
         }
 
         fetchPricingData();

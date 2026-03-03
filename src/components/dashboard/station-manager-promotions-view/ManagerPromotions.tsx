@@ -16,6 +16,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import CampaignProfile from './CampaignProfile';
 
 interface ManagerPromotionsProps {
     managerId: string;
@@ -47,6 +48,7 @@ export default function ManagerPromotions({ managerId, stationId }: ManagerPromo
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
     const [refreshingSection, setRefreshingSection] = useState<string | null>(null);
+    const [selectedCampaignId, setSelectedCampaignId] = useState<string | null>(null);
 
     const fetchData = useCallback(async () => {
         try {
@@ -139,6 +141,10 @@ export default function ManagerPromotions({ managerId, stationId }: ManagerPromo
                 </CardContent>
             </Card>
         );
+    }
+
+    if (selectedCampaignId) {
+        return <CampaignProfile campaignId={selectedCampaignId} onBack={() => setSelectedCampaignId(null)} />;
     }
 
     return (
@@ -316,9 +322,13 @@ export default function ManagerPromotions({ managerId, stationId }: ManagerPromo
                                         const displayStatus = campaign.status === 'active' && isExpired ? 'expired' : campaign.status;
 
                                         return (
-                                            <tr key={campaign.id} className="hover:bg-muted/10 transition-colors">
+                                            <tr
+                                                key={campaign.id}
+                                                className="hover:bg-muted/10 transition-colors cursor-pointer group"
+                                                onClick={() => setSelectedCampaignId(campaign.id)}
+                                            >
                                                 <td className="p-4">
-                                                    <p className="font-black text-sm">{campaign.tier?.name}</p>
+                                                    <p className="font-black text-sm group-hover:text-primary transition-colors">{campaign.tier?.name}</p>
                                                     <p className="text-[10px] text-muted-foreground font-bold tracking-tight">ID: {campaign.id.slice(0, 8)}</p>
                                                 </td>
                                                 <td className="p-4">

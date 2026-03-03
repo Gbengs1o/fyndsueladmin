@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useParams, useRouter } from "next/navigation"
-import { supabase } from "@/lib/supabase"
+import { getManagerFullProfile, toggleManagerBan } from './actions'
 import {
     ArrowLeft,
     Building2,
@@ -18,6 +18,12 @@ import {
     AlertTriangle,
     CheckCircle2
 } from "lucide-react"
+import {
+    Tooltip,
+    TooltipContent,
+    TooltipProvider,
+    TooltipTrigger,
+} from "@/components/ui/tooltip"
 import { format, formatDistanceToNow, isValid } from "date-fns"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
@@ -79,7 +85,8 @@ export default function ManagerProfilePage() {
     const [intelligenceData, setIntelligenceData] = useState<{
         activities: any[],
         analytics: any[],
-        governance: any[]
+        governance: any[],
+        performanceRadar: any
     } | null>(null)
 
     useEffect(() => {
@@ -91,57 +98,50 @@ export default function ManagerProfilePage() {
     const fetchManagerData = async () => {
         setIsLoading(true)
         try {
-            const { data, error } = await supabase
-                .from('manager_profiles')
-                .select(`
-                    *,
-                    stations (
-                        *,
-                        reviews (*, profiles (full_name, avatar_url)),
-                        flagged_stations (*)
-                    ),
-                    profiles:id (
-                        email,
-                        avatar_url,
-                        is_banned,
-                        created_at,
-                        point_transactions (*)
-                    )
-                `)
-                .eq('id', id)
-                .single()
+            const { managerData, priceLogs, auditLogs } = await getManagerFullProfile(id as string);
 
-            if (error) throw error
+            const profile = Array.isArray(managerData.profiles) ? managerData.profiles[0] : managerData.profiles
 
-            // Calculate metrics for the manager
-            const reviews = data.stations?.reviews || []
-            const totalReviews = reviews.length
-            let trustScore = 0
-            let responseRate = 0
+            // Count total reviews across all stations if it's an array
+            const stationsArray = Array.isArray(managerData.stations) ? managerData.stations : (managerData.stations ? [managerData.stations] : [])
+            const primaryStation = stationsArray[0] || null
 
-            if (totalReviews > 0) {
-                const totalPoints = reviews.reduce((sum: number, r: any) => {
+            let totalReviewsCount = 0
+            let totalResponseCount = 0
+            let totalPoints = 0
+
+            stationsArray.forEach((s: any) => {
+                const sReviews = s.reviews || []
+                totalReviewsCount += sReviews.length
+                totalResponseCount += sReviews.filter((r: any) => r.response).length
+                totalPoints += sReviews.reduce((sum: number, r: any) => {
                     return sum + (r.rating_meter || 5) + (r.rating_quality || 5)
                 }, 0)
-                const maxPoints = totalReviews * 2 * 5
-                trustScore = Math.round((totalPoints / maxPoints) * 100)
+            })
 
-                const responseCount = reviews.filter((r: any) => r.response).length
-                responseRate = Math.round((responseCount / totalReviews) * 100)
+            let trustScore = 100
+            let responseRate = 100
+
+            if (totalReviewsCount > 0) {
+                const maxPoints = totalReviewsCount * 2 * 5
+                trustScore = Math.round((totalPoints / maxPoints) * 100)
+                responseRate = Math.round((totalResponseCount / totalReviewsCount) * 100)
             }
 
             const processedManager = {
-                ...data,
-                email: data.profiles?.email || data.email,
-                is_banned: data.profiles?.is_banned || false,
-                joined_at: data.profiles?.created_at || data.created_at,
-                trust_score: trustScore,
-                response_rate: responseRate,
-                total_reviews: totalReviews
+                ...managerData,
+                stations: primaryStation,
+                profiles: profile,
+                email: profile?.email || managerData.email || managerData.profiles?.email,
+                is_banned: profile?.is_banned || managerData.is_banned || managerData.profiles?.is_banned || false,
+                joined_at: profile?.created_at || managerData.created_at || managerData.joined_at || managerData.profiles?.created_at,
+                trust_score: Math.max(0, Math.min(100, trustScore)),
+                response_rate: Math.max(0, Math.min(100, responseRate)),
+                total_reviews: totalReviewsCount
             }
 
             setManager(processedManager)
-            fetchManagerIntelligence(processedManager)
+            processManagerIntelligence(processedManager, priceLogs, auditLogs)
         } catch (error) {
             console.error("Error fetching manager:", error)
         } finally {
@@ -149,21 +149,9 @@ export default function ManagerProfilePage() {
         }
     }
 
-    const fetchManagerIntelligence = async (manager: ManagerProfile) => {
+    const processManagerIntelligence = async (manager: ManagerProfile, priceLogs: any[], auditLogs: any[]) => {
         setIsIntelligenceLoading(true)
         try {
-            const { data: priceLogs } = await supabase
-                .from('price_logs')
-                .select('*')
-                .eq('updated_by', manager.id)
-                .order('created_at', { ascending: false })
-
-            const { data: auditLogs } = await supabase
-                .from('admin_audit_logs')
-                .select('*')
-                .eq('target_id', manager.id)
-                .order('created_at', { ascending: false })
-
             const activities = [
                 ...(priceLogs || []).map(p => ({
                     id: `p-${p.id}`,
@@ -172,7 +160,14 @@ export default function ManagerProfilePage() {
                     description: `Changed from ₦${p.old_price} to ₦${p.new_price}`,
                     timestamp: p.created_at,
                 })),
-                ...(manager.profiles?.point_transactions || []).map(t => ({
+                ...(manager.profiles?.price_reports || []).map((r: any) => ({
+                    id: `r-${r.id}`,
+                    type: 'price_report',
+                    title: `Price Report: ${r.fuel_type}`,
+                    description: r.notes || `Reported price ₦${r.price}`,
+                    timestamp: r.created_at,
+                })),
+                ...(manager.profiles?.point_transactions || []).map((t: any) => ({
                     id: `t-${t.id}`,
                     type: 'points_earned',
                     title: 'Points Earned',
@@ -238,7 +233,7 @@ export default function ManagerProfilePage() {
 
             setIntelligenceData({ activities, analytics, governance, performanceRadar })
         } catch (error) {
-            console.error("Error fetching intelligence:", error)
+            console.error("Error processing intelligence:", error)
         } finally {
             setIsIntelligenceLoading(false)
         }
@@ -247,18 +242,15 @@ export default function ManagerProfilePage() {
     const handleToggleBan = async () => {
         if (!manager) return
         try {
-            const { error } = await supabase
-                .from('profiles')
-                .update({ is_banned: !manager.is_banned })
-                .eq('id', manager.id)
+            const { success, newStatus } = await toggleManagerBan(manager.id, manager.is_banned);
 
-            if (error) throw error
-
-            toast({
-                title: "Success",
-                description: `Manager ${manager.is_banned ? 'unbanned' : 'banned'} successfully.`
-            })
-            fetchManagerData()
+            if (success) {
+                toast({
+                    title: "Success",
+                    description: `Manager ${newStatus ? 'banned' : 'unbanned'} successfully.`
+                })
+                fetchManagerData()
+            }
         } catch (error: any) {
             toast({ variant: "destructive", title: "Error", description: error.message })
         }
@@ -353,27 +345,36 @@ export default function ManagerProfilePage() {
             </div>
 
             {/* Quick Stats Grid */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                    { label: 'Trust Score', value: `${manager.trust_score}%`, icon: Shield, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20' },
-                    { label: 'Response Rate', value: `${manager.response_rate}%`, icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/20' },
-                    { label: 'Total Reviews', value: manager.total_reviews, icon: MessageSquare, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20' },
-                    { label: 'Reward Points', value: manager.profiles?.point_transactions?.reduce((sum, t) => sum + t.amount, 0) || 0, icon: Star, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20' },
-                ].map((stat, i) => (
-                    <Card key={i} className={`border ${stat.border} shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-1 bg-gradient-to-br from-background to-muted/20 relative group`}>
-                        <div className={`absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${stat.bg}`} />
-                        <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-3 relative z-10">
-                            <div className={`p-3.5 rounded-2xl ${stat.bg} ${stat.color} ring-4 ring-background shadow-inner transition-transform duration-500 group-hover:scale-110`}>
-                                <stat.icon className="h-6 w-6" />
-                            </div>
-                            <div className="space-y-1">
-                                <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">{stat.label}</p>
-                                <p className="text-3xl font-black tracking-tight">{stat.value}</p>
-                            </div>
-                        </CardContent>
-                    </Card>
-                ))}
-            </div>
+            <TooltipProvider>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                    {[
+                        { label: 'Trust Score', value: `${manager.trust_score}%`, icon: Shield, color: 'text-blue-500', bg: 'bg-blue-500/10', border: 'border-blue-500/20', tooltip: 'Calculated based on reporting accuracy and verified customer reviews over time.' },
+                        { label: 'Response Rate', value: `${manager.response_rate}%`, icon: Zap, color: 'text-amber-500', bg: 'bg-amber-500/10', border: 'border-amber-500/20', tooltip: 'The percentage of reviews and user reports that the manager has responded to.' },
+                        { label: 'Total Reviews', value: manager.total_reviews, icon: MessageSquare, color: 'text-purple-500', bg: 'bg-purple-500/10', border: 'border-purple-500/20', tooltip: 'Cumulative count of all customer reviews received for assigned stations.' },
+                        { label: 'Reputation Score', value: manager.profiles?.point_transactions?.reduce((sum, t) => sum + t.amount, 0) || 0, icon: Star, color: 'text-emerald-500', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', tooltip: 'Total points earned from verified price logs and management activities.' },
+                    ].map((stat, i) => (
+                        <Tooltip key={i}>
+                            <TooltipTrigger asChild>
+                                <Card className={`border ${stat.border} shadow-sm overflow-hidden transition-all duration-300 hover:shadow-md hover:-translate-y-1 bg-gradient-to-br from-background to-muted/20 relative group cursor-help`}>
+                                    <div className={`absolute top-0 right-0 w-24 h-24 rounded-full blur-2xl -translate-y-1/2 translate-x-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-500 ${stat.bg}`} />
+                                    <CardContent className="p-6 flex flex-col items-center justify-center text-center gap-3 relative z-10">
+                                        <div className={`p-3.5 rounded-2xl ${stat.bg} ${stat.color} ring-4 ring-background shadow-inner transition-transform duration-500 group-hover:scale-110`}>
+                                            <stat.icon className="h-6 w-6" />
+                                        </div>
+                                        <div className="space-y-1">
+                                            <p className="text-[10px] uppercase font-black tracking-widest text-muted-foreground">{stat.label}</p>
+                                            <p className="text-3xl font-black tracking-tight">{stat.value}</p>
+                                        </div>
+                                    </CardContent>
+                                </Card>
+                            </TooltipTrigger>
+                            <TooltipContent side="bottom" className="bg-black/90 text-white border-none rounded-xl p-3 max-w-[200px] text-center text-xs font-bold shadow-xl animate-in zoom-in-95 duration-200">
+                                {stat.tooltip}
+                            </TooltipContent>
+                        </Tooltip>
+                    ))}
+                </div>
+            </TooltipProvider>
 
             {/* Main Content Tabs */}
             <Tabs defaultValue="overview" className="w-full">
@@ -402,10 +403,10 @@ export default function ManagerProfilePage() {
                                 <CardContent className="p-8 space-y-8">
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                                         <div className="space-y-3">
-                                            <p className="text-[10px] uppercase font-black text-muted-foreground tracking-widest flex items-center gap-2">
+                                            <div className="text-[10px] uppercase font-black text-muted-foreground tracking-widest flex items-center gap-2">
                                                 <div className="h-1.5 w-1.5 rounded-full bg-primary" />
                                                 Verification Proof
-                                            </p>
+                                            </div>
                                             <div className="aspect-[4/3] relative rounded-2xl overflow-hidden border-2 bg-muted/20 group">
                                                 {manager.verification_photo_url ? (
                                                     <img
@@ -583,9 +584,9 @@ export default function ManagerProfilePage() {
                                                         <p className="text-sm italic font-medium leading-relaxed bg-muted/30 p-4 rounded-xl text-muted-foreground border border-black/5">"{review.comment}"</p>
                                                         {review.response && (
                                                             <div className="p-4 bg-gradient-to-r from-primary/10 to-transparent border-l-4 border-primary rounded-r-xl ms-4">
-                                                                <p className="text-[10px] font-black text-primary mb-1.5 uppercase tracking-widest leading-none flex items-center gap-2">
+                                                                <div className="text-[10px] font-black text-primary mb-1.5 uppercase tracking-widest leading-none flex items-center gap-2">
                                                                     <div className="h-1.5 w-1.5 rounded-full bg-primary" /> Manager Response
-                                                                </p>
+                                                                </div>
                                                                 <p className="text-xs font-bold leading-relaxed">{review.response}</p>
                                                             </div>
                                                         )}

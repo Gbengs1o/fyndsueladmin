@@ -1,6 +1,6 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin';
 import { revalidatePath } from 'next/cache';
 
 // Admin gets manager's wallet details by managerId
@@ -162,4 +162,32 @@ export async function adminActivatePromotion(managerId: string, stationId: numbe
 
     revalidatePath(`/dashboard/managers/${managerId}`);
     return { success: true };
+}
+
+export async function getCampaignDetailsAdmin(campaignId: string) {
+    const { data, error } = await supabase
+        .from('station_promotions')
+        .select('*, tier:tier_id(*)')
+        .eq('id', campaignId)
+        .single();
+
+    if (error) {
+        console.error('Error fetching campaign details:', error);
+        return null;
+    }
+    return data;
+}
+
+export async function getPromotionClickEventsAdmin(campaignId: string) {
+    const { data, error } = await supabase
+        .from('promotion_clicks')
+        .select('*')
+        .eq('promotion_id', campaignId)
+        .order('created_at', { ascending: true });
+
+    if (error) {
+        console.error('Error fetching promotion click events:', error);
+        return [];
+    }
+    return data;
 }

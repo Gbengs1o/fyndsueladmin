@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { supabase } from '@/lib/supabase';
+import { getReputationData } from './actions';
 import styles from '../station-manager-view/ManagerOverview.module.css';
 import TrustScoreCards from './TrustScoreCards';
 import ReviewList from './ReviewList';
@@ -22,109 +22,96 @@ export default function ManagerReputation({ stationId, managerId }: ManagerReput
         async function fetchReputationData() {
             setLoading(true);
 
-            // 1. Fetch Station Info
-            const { data: station } = await supabase
-                .from('stations')
-                .select('*')
-                .eq('id', stationId)
-                .single();
+            try {
+                const {
+                    station,
+                    reviews,
+                    pReports,
+                    reportsCount,
+                    verificationsCount
+                } = await getReputationData(stationId);
 
-            // 2. Fetch Aggregated Metrics
-            const { data: reviews } = await supabase
-                .from('reviews')
-                .select('*, profiles:user_id(full_name, avatar_url)')
-                .eq('station_id', stationId)
-                .order('created_at', { ascending: false });
+                // 3. Unify into a single activity feed
+                const unifiedFeed = [
+                    ...(reviews || []).map((r: any) => ({ ...r, type: 'review' })),
+                    ...(pReports || []).map((p: any) => ({
+                        ...p,
+                        type: 'report',
+                        rating: p.rating || 5,
+                        comment: p.notes
+                    }))
+                ].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
-            const { data: pReports, count: reportsCount } = await supabase
-                .from('price_reports')
-                .select('*, profiles:user_id(full_name, avatar_url)', { count: 'exact' })
-                .eq('station_id', stationId)
-                .order('created_at', { ascending: false });
+                // 4. Calculate Aggregate Scores
+                const totalReviews = reviews?.length || 0;
+                const reviewsWithMeter = reviews?.filter(r => r.rating_meter !== undefined && r.rating_meter !== null) || [];
 
-            const { count: verificationsCount } = await supabase
-                .from('price_verifications')
-                .select('*', { count: 'exact', head: true })
-                .eq('station_id', stationId);
+                // Meter Accuracy Aggregation: (RatingMeter from Reviews + MeterAccuracy from Reports)
+                const reportMeterScores = (pReports || []).map(p => p.meter_accuracy === 100 || p.meter_accuracy === null ? 5 : 1);
+                const combinedMeterScores = [
+                    ...reviewsWithMeter.map(r => r.rating_meter),
+                    ...reportMeterScores
+                ];
 
-            // 3. Unify into a single activity feed
-            const unifiedFeed = [
-                ...(reviews || []).map((r: any) => ({ ...r, type: 'review' })),
-                ...(pReports || []).map((p: any) => ({
-                    ...p,
-                    type: 'report',
-                    rating: p.rating || 5,
-                    comment: p.notes
-                }))
-            ].sort((a: any, b: any) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+                const meterRating = combinedMeterScores.length
+                    ? combinedMeterScores.reduce((acc, val) => acc + (val || 0), 0) / combinedMeterScores.length
+                    : 5.0; // Optimistic Baseline (Sync with Mobile App)
 
-            // 4. Calculate Aggregate Scores
-            const totalReviews = reviews?.length || 0;
-            const reviewsWithMeter = reviews?.filter(r => r.rating_meter !== undefined && r.rating_meter !== null) || [];
+                // Trust Points Calculation (Gamified)
+                const verificationPoints = station?.is_verified ? 300 : 0;
+                const accuracyCountFromReviews = reviewsWithMeter.filter(r => (r.rating_meter || 0) >= 4).length;
+                const accuracyFailureFromReports = (pReports || []).filter(p => p.meter_accuracy !== null && p.meter_accuracy !== 100).length;
+                const totalChecks = combinedMeterScores.length;
 
-            // Meter Accuracy Aggregation: (RatingMeter from Reviews + MeterAccuracy from Reports)
-            const reportMeterScores = (pReports || []).map(p => p.meter_accuracy === 100 || p.meter_accuracy === null ? 5 : 1);
-            const combinedMeterScores = [
-                ...reviewsWithMeter.map(r => r.rating_meter),
-                ...reportMeterScores
-            ];
+                const accuracyRatio = totalChecks
+                    ? (combinedMeterScores.filter(s => (s || 0) >= 4).length / totalChecks)
+                    : 1.0; // Optimistic Baseline
+                const accuracyPoints = Math.round(accuracyRatio * 300);
 
-            const meterRating = combinedMeterScores.length
-                ? combinedMeterScores.reduce((acc, val) => acc + (val || 0), 0) / combinedMeterScores.length
-                : 5.0; // Optimistic Baseline (Sync with Mobile App)
+                const responseCount = reviews?.filter(r => r.response).length || 0;
+                const engagementPoints = Math.min(responseCount * 50, 200);
 
-            // Trust Points Calculation (Gamified)
-            const verificationPoints = station?.is_verified ? 300 : 0;
-            const accuracyCountFromReviews = reviewsWithMeter.filter(r => (r.rating_meter || 0) >= 4).length;
-            const accuracyFailureFromReports = (pReports || []).filter(p => p.meter_accuracy !== null && p.meter_accuracy !== 100).length;
-            const totalChecks = combinedMeterScores.length;
+                const activityCount = (reportsCount || 0) + (verificationsCount || 0);
+                const consistencypoints = Math.min(activityCount * 10, 200);
 
-            const accuracyRatio = totalChecks
-                ? (combinedMeterScores.filter(s => (s || 0) >= 4).length / totalChecks)
-                : 1.0; // Optimistic Baseline
-            const accuracyPoints = Math.round(accuracyRatio * 300);
+                // Calculate Star Rating (Weighted)
+                // 40% Meter Accuracy, 40% User Reviews, 20% Verification Status
+                const reviewAvg = reviews?.reduce((acc, r) => acc + r.rating, 0) || 0;
+                const avgReviewScore = totalReviews ? reviewAvg / totalReviews : 5.0; // Optimistic Baseline
 
-            const responseCount = reviews?.filter(r => r.response).length || 0;
-            const engagementPoints = Math.min(responseCount * 50, 200);
+                const weightedRating = (
+                    (accuracyRatio * 5 * 0.4) +
+                    (avgReviewScore * 0.4) +
+                    ((station?.is_verified ? 5 : 0) * 0.2)
+                );
 
-            const activityCount = (reportsCount || 0) + (verificationsCount || 0);
-            const consistencypoints = Math.min(activityCount * 10, 200);
+                // Every station baselines at 5.0 (100% in app terms)
+                const displayRating = (totalReviews > 0 || (reportsCount || 0) > 0) ? weightedRating.toFixed(1) : '5.0';
 
-            // Calculate Star Rating (Weighted)
-            // 40% Meter Accuracy, 40% User Reviews, 20% Verification Status
-            const reviewAvg = reviews?.reduce((acc, r) => acc + r.rating, 0) || 0;
-            const avgReviewScore = totalReviews ? reviewAvg / totalReviews : 5.0; // Optimistic Baseline
+                // MOBILE APP SYNC: Trust Score as Percentage
+                const trustScorePercent = Math.round((Number(displayRating) / 5) * 100);
 
-            const weightedRating = (
-                (accuracyRatio * 5 * 0.4) +
-                (avgReviewScore * 0.4) +
-                ((station?.is_verified ? 5 : 0) * 0.2)
-            );
+                // GOLD STATUS MILESTONES (Sync with Mobile App)
+                const milestones = {
+                    trustScoreGte90: trustScorePercent >= 90,
+                    reviewsGte10: (totalReviews + (reportsCount || 0)) >= 10,
+                    responseRateGte90: totalReviews > 0 ? (responseCount / totalReviews) >= 0.9 : true
+                };
 
-            // Every station baselines at 5.0 (100% in app terms)
-            const displayRating = (totalReviews > 0 || (reportsCount || 0) > 0) ? weightedRating.toFixed(1) : '5.0';
+                setData({
+                    station,
+                    unifiedFeed,
+                    totalReviews,
+                    reportsCount,
+                    meterRating,
+                    trustScorePercent,
+                    milestones
+                });
 
-            // MOBILE APP SYNC: Trust Score as Percentage
-            const trustScorePercent = Math.round((Number(displayRating) / 5) * 100);
-
-            // GOLD STATUS MILESTONES (Sync with Mobile App)
-            const milestones = {
-                trustScoreGte90: trustScorePercent >= 90,
-                reviewsGte10: (totalReviews + (reportsCount || 0)) >= 10,
-                responseRateGte90: totalReviews > 0 ? (responseCount / totalReviews) >= 0.9 : true
-            };
-
-            setData({
-                station,
-                unifiedFeed,
-                totalReviews,
-                reportsCount,
-                meterRating,
-                trustScorePercent,
-                milestones
-            });
-
-            setLoading(false);
+            } catch (error) {
+                console.error("Error fetching reputation data:", error);
+                setLoading(false);
+            }
         }
 
         fetchReputationData();

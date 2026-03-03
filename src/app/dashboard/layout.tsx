@@ -1,6 +1,7 @@
 "use client"
 
 import {
+  AlertTriangle,
   BadgeCheck,
   BarChart3,
   Bell,
@@ -19,6 +20,7 @@ import {
   ShieldCheck,
   Users,
   Wallet,
+  Zap,
 } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -63,6 +65,8 @@ const navItems = [
   { href: "/dashboard/redemptions", icon: Wallet, label: "Redemptions" },
   { href: "/dashboard/managers", icon: ShieldCheck, label: "Manager Overview" },
   { href: "/dashboard/managers/requests", icon: Users, label: "Manager Requests" },
+  { href: "/dashboard/promotions", icon: Zap, label: "Promotion Pricing" },
+  { href: "/dashboard/complaints", icon: AlertTriangle, label: "Station Complaints" },
   { href: "/dashboard/broadcast", icon: Mail, label: "Broadcast" },
   { href: "/dashboard/analytics", icon: BarChart3, label: "Analytics" },
   { href: "/dashboard/reports", icon: FileText, label: "Report Generation" },

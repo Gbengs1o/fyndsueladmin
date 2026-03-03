@@ -1,10 +1,12 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin';
+import { createSupabaseServer } from '@/lib/supabaseServer';
 import { revalidatePath } from 'next/cache';
 
 export async function updateStationPricesAdmin(formData: FormData, stationId: number, managerId: string) {
-    const { data: { user } } = await supabase.auth.getUser();
+    const supabaseServer = await createSupabaseServer();
+    const { data: { user } } = await supabaseServer.auth.getUser();
     if (!user) throw new Error('Unauthorized');
 
     const pms = parseFloat(formData.get('pms') as string);
@@ -24,8 +26,7 @@ export async function updateStationPricesAdmin(formData: FormData, stationId: nu
         .update({
             price_pms: pms,
             price_ago: ago,
-            price_dpk: dpk,
-            updated_at: new Date().toISOString()
+            price_dpk: dpk
         })
         .eq('id', stationId);
 
@@ -62,24 +63,53 @@ export async function updateStationPricesAdmin(formData: FormData, stationId: nu
     return { success: true };
 }
 
-export async function getStationDetailsAdmin(stationId: number) {
-    const { data: station, error: stationError } = await supabase
+export async function getPricingData(stationId: number, state: string, latitude: number, longitude: number) {
+    // 1. Fetch Official State Price
+    const { data: officialPriceData } = await supabase
+        .from('official_prices')
+        .select('pms_price')
+        .eq('state', state)
+        .eq('brand', 'all')
+        .maybeSingle();
+
+    const statePrice = parseFloat(officialPriceData?.pms_price as any) || 650;
+
+    // 2. Fetch Nearby Stations
+    const { data: nearby } = await supabase
         .from('stations')
+        .select('id, name, brand, price_pms, latitude, longitude')
+        .eq('state', state)
+        .neq('id', stationId)
+        .limit(100);
+
+    // 3. Fetch Price History Logs
+    const { data: allHistoryLogs } = await supabase
+        .from('price_logs')
         .select('*')
+        .eq('station_id', stationId)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+    return {
+        statePrice,
+        nearby,
+        allHistoryLogs: allHistoryLogs || []
+    };
+}
+
+export async function getStationDetailsAdmin(stationId: number) {
+    const { data, error } = await supabase
+        .from('stations')
+        .select(`
+            *,
+            manager:manager_profiles (
+                full_name,
+                phone_number
+            )
+        `)
         .eq('id', stationId)
         .single();
 
-    if (stationError) throw stationError;
-
-    // Fetch manager if exists
-    const { data: manager } = await supabase
-        .from('manager_profiles')
-        .select('full_name, phone_number')
-        .eq('station_id', stationId)
-        .single();
-
-    return {
-        ...station,
-        manager: manager || null
-    };
+    if (error) throw error;
+    return data;
 }

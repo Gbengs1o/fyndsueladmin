@@ -1,6 +1,6 @@
 'use client';
 
-import { supabase } from '@/lib/supabase';
+import { getOverviewData } from './actions';
 import styles from './ManagerOverview.module.css';
 import {
     TrendingUp,
@@ -37,221 +37,143 @@ export default function ManagerOverview({ managerId, stationId }: ManagerOvervie
     useEffect(() => {
         async function fetchData() {
             if (!managerId) return;
+            setLoading(true);
 
-            let targetStationId = stationId;
-
-            // If stationId not provided, fetch it from manager_profiles
-            if (!targetStationId) {
-                const { data: profile } = await supabase
-                    .from('manager_profiles')
-                    .select('station_id')
-                    .eq('id', managerId)
-                    .single();
-
-                if (profile?.station_id) {
-                    targetStationId = profile.station_id;
+            try {
+                const result = await getOverviewData(managerId, stationId);
+                if (!result) {
+                    setLoading(false);
+                    return;
                 }
-            }
 
-            if (!targetStationId) {
+                const {
+                    station,
+                    officialPriceData,
+                    nearby,
+                    feedbacks,
+                    reports,
+                    activePromotion,
+                    analytics,
+                    favCount,
+                    priceHistory,
+                    reportTimestamps,
+                    targetStationId
+                } = result;
+
+                const statePrice = parseFloat(officialPriceData?.pms_price as any) || 950;
+
+                // 2. Fetch Nearest 3 Competitors
+                const userLat = station?.latitude || 7.404818;
+                const userLon = station?.longitude || 3.810341;
+
+                const formattedCompetitors = (nearby || [])
+                    .map((c: any) => {
+                        const lat1 = userLat;
+                        const lon1 = userLon;
+                        const lat2 = c.latitude || 0;
+                        const lon2 = c.longitude || 0;
+                        const R = 6371; // km
+                        const dLat = (lat2 - lat1) * Math.PI / 180;
+                        const dLon = (lon2 - lon1) * Math.PI / 180;
+                        const a =
+                            Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+                            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+                        const dist = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
+                        return { ...c, distanceValue: dist, distance: `${dist.toFixed(1)}km` };
+                    })
+                    .sort((a, b) => a.distanceValue - b.distanceValue)
+                    .slice(0, 3)
+                    .map(c => ({
+                        ...c,
+                        price_pms: parseFloat(c.price_pms as any) || statePrice
+                    }));
+
+                // 2. Analytics (Daily Visits)
+                const analyticsData = analytics as any[] | null;
+                let todayVisits = analyticsData?.[0]?.daily_visits || 0;
+                let yesterdayVisits = analyticsData?.[1]?.daily_visits || 0;
+
+                const nowTime = new Date();
+                const startOfToday = new Date(nowTime.getFullYear(), nowTime.getMonth(), nowTime.getDate()).toISOString();
+
+                if (todayVisits === 0) {
+                    const reportsToday = (reports || []).filter((r: any) => r.created_at >= startOfToday).length;
+                    todayVisits = reportsToday || 0;
+
+                    if (activePromotion?.clicks) {
+                        todayVisits += Math.ceil(activePromotion.clicks / 5);
+                    }
+                }
+
+                const totalFavourites = favCount || 0;
+
+                const visitGrowth = yesterdayVisits > 0
+                    ? ((todayVisits - yesterdayVisits) / yesterdayVisits) * 100
+                    : (todayVisits > 0 ? 100 : 0);
+
+                // 3. Market Opportunity Trend
+                const realMarketAvg = nearby && (nearby as any[]).length > 0
+                    ? (nearby as any[]).reduce((acc: number, c: any) => acc + (parseFloat(c.price_pms) || statePrice), 0) / (nearby as any[]).length
+                    : statePrice;
+
+                const priceDiff = (station?.price_pms || 0) - realMarketAvg;
+
+                const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                const trendData = Array.from({ length: 7 }).map((_, i) => {
+                    const date = new Date();
+                    date.setDate(date.getDate() - (6 - i));
+                    const dayName = days[date.getDay()];
+                    const historicPrice = (priceHistory || []).find((p: any) => new Date(p.created_at).getDate() === date.getDate())?.new_price
+                        || station?.price_pms
+                        || 640;
+
+                    return {
+                        day: dayName,
+                        yourPrice: Number(historicPrice),
+                        marketAvg: Math.round(realMarketAvg)
+                    };
+                });
+
+                const todayAnalytics = analyticsData?.[0];
+                const historicalViews = todayAnalytics?.profile_views || analyticsData?.[1]?.profile_views || 0;
+                const displayViews = historicalViews + (activePromotion?.views || 0);
+
+                const hourCounts: Record<number, number> = {};
+                (reportTimestamps || []).forEach((r: any) => {
+                    const hour = new Date(r.created_at).getHours();
+                    hourCounts[hour] = (hourCounts[hour] || 0) + 1;
+                });
+
+                const peakHour24 = Object.keys(hourCounts).length > 0
+                    ? Object.entries(hourCounts).reduce((a: any, b: any) => a[1] > b[1] ? a : b)[0]
+                    : null;
+
+                const peakHourLabel = peakHour24
+                    ? `${Number(peakHour24) % 12 || 12}${Number(peakHour24) >= 12 ? 'PM' : 'AM'}`
+                    : '4PM';
+
+                setData({
+                    station,
+                    formattedCompetitors,
+                    feedbacks,
+                    reports,
+                    todayVisits,
+                    visitGrowth,
+                    priceDiff,
+                    trendData,
+                    displayViews,
+                    peakHourLabel,
+                    activePromotion,
+                    statePrice,
+                    totalFavourites,
+                    communityReach: displayViews + (reports?.length || 0) + totalFavourites
+                });
+            } catch (error) {
+                console.error("Error fetching overview data:", error);
+            } finally {
                 setLoading(false);
-                return;
             }
-
-            // 1. Fetch Station Info
-            const { data: station } = await supabase
-                .from('stations')
-                .select('*')
-                .eq('id', targetStationId)
-                .single();
-
-            // 1b. Fetch Official State Price (Fallback)
-            const { data: officialPriceData } = await supabase
-                .from('official_prices')
-                .select('pms_price')
-                .eq('state', station?.state || 'Oyo')
-                .eq('brand', 'all')
-                .maybeSingle();
-
-            const statePrice = parseFloat(officialPriceData?.pms_price as any) || 950;
-
-            // 2. Fetch Nearest 3 Competitors
-            const userLat = station?.latitude || 7.404818;
-            const userLon = station?.longitude || 3.810341;
-
-            const { data: nearby } = await supabase
-                .from('stations')
-                .select('id, name, brand, price_pms, latitude, longitude')
-                .eq('state', station?.state || 'Oyo')
-                .neq('id', station?.id)
-                .limit(10);
-
-            const formattedCompetitors = (nearby || [])
-                .map(c => {
-                    const lat1 = userLat;
-                    const lon1 = userLon;
-                    const lat2 = c.latitude || 0;
-                    const lon2 = c.longitude || 0;
-                    const R = 6371; // km
-                    const dLat = (lat2 - lat1) * Math.PI / 180;
-                    const dLon = (lon2 - lon1) * Math.PI / 180;
-                    const a =
-                        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-                        Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-                        Math.sin(dLon / 2) * Math.sin(dLon / 2);
-                    const dist = R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a)));
-                    return { ...c, distanceValue: dist, distance: `${dist.toFixed(1)}km` };
-                })
-                .sort((a, b) => a.distanceValue - b.distanceValue)
-                .slice(0, 3)
-                .map(c => ({
-                    ...c,
-                    price_pms: parseFloat(c.price_pms as any) || statePrice
-                }));
-
-            // 3. Fetch Recent Feedback with User Profile
-            const { data: feedbacks } = await supabase
-                .from('reviews')
-                .select('*, profiles:user_id(full_name, avatar_url)')
-                .eq('station_id', station?.id)
-                .order('created_at', { ascending: false })
-                .limit(5);
-
-            // 4. Fetch User Reports (Ground Truth) with Profiles
-            const { data: reports } = await supabase
-                .from('price_reports')
-                .select('*, profiles:user_id(full_name, avatar_url)')
-                .eq('station_id', station?.id)
-                .order('created_at', { ascending: false })
-                .limit(10);
-
-            // Fetch Active Promotion
-            const now = new Date().toISOString();
-            const { data: activePromotion } = await supabase
-                .from('station_promotions')
-                .select('*, tier:tier_id(*)')
-                .eq('station_id', targetStationId)
-                .eq('status', 'active')
-                .gt('end_time', now)
-                .maybeSingle();
-
-            // 5. Fetch Analytics (Daily Visits)
-            const { data: analytics } = await supabase
-                .from('station_analytics')
-                .select('daily_visits, date, profile_views')
-                .eq('station_id', station?.id)
-                .order('date', { ascending: false })
-                .limit(2);
-
-            let todayVisits = analytics?.[0]?.daily_visits || 0;
-            let yesterdayVisits = analytics?.[1]?.daily_visits || 0;
-
-            const nowTime = new Date();
-            const startOfToday = new Date(nowTime.getFullYear(), nowTime.getMonth(), nowTime.getDate()).toISOString();
-
-            if (todayVisits === 0) {
-                const { count: reportsToday } = await supabase
-                    .from('price_reports')
-                    .select('*', { count: 'exact', head: true })
-                    .eq('station_id', station?.id)
-                    .gte('created_at', startOfToday);
-
-                todayVisits = reportsToday || 0;
-
-                if (activePromotion?.clicks) {
-                    todayVisits += Math.ceil(activePromotion.clicks / 5);
-                }
-            }
-
-            // 5b. Fetch Favourites
-            const { count: favCount } = await supabase
-                .from('favourite_stations')
-                .select('*', { count: 'exact', head: true })
-                .eq('station_id', station?.id);
-
-            const totalFavourites = favCount || 0;
-
-            const visitGrowth = yesterdayVisits > 0
-                ? ((todayVisits - yesterdayVisits) / yesterdayVisits) * 100
-                : (todayVisits > 0 ? 100 : 0);
-
-            // 6. Fetch Price History for Chart
-            const { data: priceHistory } = await supabase
-                .from('price_logs')
-                .select('new_price, created_at')
-                .eq('station_id', station?.id)
-                .eq('fuel_type', 'PMS')
-                .order('created_at', { ascending: true })
-                .limit(7);
-
-            const validCompetitors = nearby?.filter(c => c.price_pms > 0) || [];
-            const realMarketAvg = validCompetitors.length > 0
-                ? validCompetitors.reduce((acc, c) => acc + (c.price_pms || 0), 0) / validCompetitors.length
-                : statePrice;
-
-            const priceDiff = (station?.price_pms || 0) - realMarketAvg;
-
-            const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-            const trendData = Array.from({ length: 7 }).map((_, i) => {
-                const date = new Date();
-                date.setDate(date.getDate() - (6 - i));
-                const dayName = days[date.getDay()];
-                const historicPrice = priceHistory?.find(p => new Date(p.created_at).getDate() === date.getDate())?.new_price
-                    || station?.price_pms
-                    || 640;
-
-                return {
-                    day: dayName,
-                    yourPrice: Number(historicPrice),
-                    marketAvg: Math.round(realMarketAvg)
-                };
-            });
-
-            const analyticsData = analytics as any[] | null;
-            const todayAnalytics = analyticsData?.[0];
-            const historicalViews = todayAnalytics?.profile_views || analyticsData?.[1]?.profile_views || 0;
-            const displayViews = historicalViews + (activePromotion?.views || 0);
-
-            const sevenDaysAgo = new Date();
-            sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-            const { data: reportTimestamps } = await supabase
-                .from('price_reports')
-                .select('created_at')
-                .eq('station_id', station?.id)
-                .gte('created_at', sevenDaysAgo.toISOString())
-                .limit(1000);
-
-            const hourCounts: Record<number, number> = {};
-            (reportTimestamps || []).forEach(r => {
-                const hour = new Date(r.created_at).getHours();
-                hourCounts[hour] = (hourCounts[hour] || 0) + 1;
-            });
-
-            const peakHour24 = Object.keys(hourCounts).length > 0
-                ? Object.entries(hourCounts).reduce((a: any, b: any) => a[1] > b[1] ? a : b)[0]
-                : null;
-
-            const peakHourLabel = peakHour24
-                ? `${Number(peakHour24) % 12 || 12}${Number(peakHour24) >= 12 ? 'PM' : 'AM'}`
-                : '4PM';
-
-            setData({
-                station,
-                formattedCompetitors,
-                feedbacks,
-                reports,
-                todayVisits,
-                visitGrowth,
-                priceDiff,
-                trendData,
-                displayViews,
-                peakHourLabel,
-                activePromotion,
-                statePrice,
-                totalFavourites,
-                communityReach: displayViews + (reports?.length || 0) + totalFavourites
-            });
-            setLoading(false);
         }
         fetchData();
     }, [managerId, stationId]);
@@ -427,7 +349,7 @@ export default function ManagerOverview({ managerId, stationId }: ManagerOvervie
                             <div className="flex items-center gap-2 mb-2 text-blue-500 font-medium">
                                 <Droplet size={18} /> Update PMS Price
                             </div>
-                            <QuickPriceAction fuelType="PMS" initialPrice={station?.price_pms || statePrice} />
+                            <QuickPriceAction fuelType="PMS" initialPrice={station?.price_pms || statePrice} stationId={station?.id} />
                         </div>
 
                         <hr className="border-none border-t border-border my-4" />

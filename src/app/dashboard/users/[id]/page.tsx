@@ -5,10 +5,11 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { format, formatDistanceToNow } from "date-fns"
-import { ArrowLeft, DollarSign, ExternalLink, Flag, Gamepad2, ImageIcon, Lightbulb, Loader2, Mail, Phone, ShieldX, Star, TrendingUp, User as UserIcon } from "lucide-react"
+import { ArrowLeft, DollarSign, ExternalLink, Flag, Gamepad2, ImageIcon, Lightbulb, Loader2, Mail, Phone, Pencil, ShieldX, Star, TrendingUp, User as UserIcon } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import * as React from "react"
+import { logAdminAction } from "@/lib/admin-logger"
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
@@ -17,6 +18,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Progress } from "@/components/ui/progress"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 
 interface UserProfile {
     id: string;
@@ -100,6 +104,11 @@ export default function UserDetailPage() {
 
     const [loading, setLoading] = React.useState(true)
     const [error, setError] = React.useState<string | null>(null)
+
+    // Edit Name local state
+    const [isEditNameOpen, setIsEditNameOpen] = React.useState(false)
+    const [newName, setNewName] = React.useState("")
+    const [isSavingName, setIsSavingName] = React.useState(false)
 
     const fetchUserData = React.useCallback(async () => {
         if (!userId) return
@@ -186,6 +195,7 @@ export default function UserDetailPage() {
                 ...profileData,
                 isAdmin: profileData.role === 'admin'
             });
+            setNewName(profileData.full_name || "")
         }
 
         if (reportsData) {
@@ -291,6 +301,38 @@ export default function UserDetailPage() {
         }
     }
 
+    const handleUpdateName = async () => {
+        if (!user || !newName.trim()) return
+        setIsSavingName(true)
+
+        try {
+            // Snapshot for logging
+            const { data: previousState } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+
+            const { error } = await supabase
+                .from('profiles')
+                .update({ full_name: newName.trim() })
+                .eq('id', user.id)
+
+            if (error) throw error
+
+            await logAdminAction('UPDATE_USER', 'profiles', user.id, {
+                field: 'full_name',
+                old_value: user.full_name,
+                new_value: newName.trim(),
+                previous_state: previousState
+            })
+
+            toast({ title: "Name Updated", description: "User name has been changed successfully." })
+            setIsEditNameOpen(false)
+            fetchUserData()
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message })
+        } finally {
+            setIsSavingName(false)
+        }
+    }
+
     if (loading) {
         return (
             <div className="flex h-96 w-full items-center justify-center">
@@ -391,7 +433,20 @@ export default function UserDetailPage() {
                                     <UserIcon className="w-12 h-12" />
                                 </AvatarFallback>
                             </Avatar>
-                            <CardTitle className="text-2xl">{user.full_name || "Anonymous User"}</CardTitle>
+                            <div className="flex items-center gap-2">
+                                <CardTitle className="text-2xl">{user.full_name || "Anonymous User"}</CardTitle>
+                                <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                    onClick={() => {
+                                        setNewName(user.full_name || "")
+                                        setIsEditNameOpen(true)
+                                    }}
+                                >
+                                    <Pencil className="h-3 w-3" />
+                                </Button>
+                            </div>
                             <CardDescription>{user.email || user.phone}</CardDescription>
                         </CardHeader>
                         <CardContent className="text-sm">
@@ -680,6 +735,38 @@ export default function UserDetailPage() {
                     </Tabs>
                 </div>
             </div>
+            {/* Edit Name Dialog */}
+            <Dialog open={isEditNameOpen} onOpenChange={setIsEditNameOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit User Name</DialogTitle>
+                        <DialogDescription>
+                            Change the user's display name. This will be visible to them and other users.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="name">Full Name</Label>
+                            <Input
+                                id="name"
+                                value={newName}
+                                onChange={(e) => setNewName(e.target.value)}
+                                placeholder="Enter full name"
+                                disabled={isSavingName}
+                            />
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditNameOpen(false)} disabled={isSavingName}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleUpdateName} disabled={isSavingName || !newName.trim()}>
+                            {isSavingName && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
         </div>
     )
 }

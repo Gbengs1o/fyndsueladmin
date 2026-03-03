@@ -1,6 +1,6 @@
 'use server';
 
-import { supabase } from '@/lib/supabase';
+import { supabaseAdmin as supabase } from '@/lib/supabaseAdmin';
 import { revalidatePath } from 'next/cache';
 
 export async function respondToReview(reviewId: string, response: string) {
@@ -72,5 +72,40 @@ export async function getScoutProfile(userId: string) {
             ...r,
             station_name: (r as any).stations?.name || 'Unknown Station'
         }))
+    };
+}
+
+export async function getReputationData(stationId: number) {
+    // 1. Fetch Station Info
+    const { data: station } = await supabase
+        .from('stations')
+        .select('*')
+        .eq('id', stationId)
+        .single();
+
+    // 2. Fetch Aggregated Metrics
+    const { data: reviews } = await supabase
+        .from('reviews')
+        .select('*, profiles:user_id(full_name, avatar_url)')
+        .eq('station_id', stationId)
+        .order('created_at', { ascending: false });
+
+    const { data: pReports, count: reportsCount } = await supabase
+        .from('price_reports')
+        .select('*, profiles:user_id(full_name, avatar_url)', { count: 'exact' })
+        .eq('station_id', stationId)
+        .order('created_at', { ascending: false });
+
+    const { count: verificationsCount } = await supabase
+        .from('price_verifications')
+        .select('*', { count: 'exact', head: true })
+        .eq('station_id', stationId);
+
+    return {
+        station,
+        reviews,
+        pReports,
+        reportsCount,
+        verificationsCount
     };
 }
