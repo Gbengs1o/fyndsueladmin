@@ -24,7 +24,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { ScrollArea } from "@/components/ui/scroll-area"
+
 import { ManagerActivityTimeline } from "@/components/dashboard/manager-activity-timeline"
 import ManagerAnalytics from '@/components/dashboard/station-manager-analytics-view/ManagerAnalytics'
 import ManagerOverview from "@/components/dashboard/station-manager-view/ManagerOverview"
@@ -283,7 +283,7 @@ export default function ManagerProfilePage() {
     }
 
     return (
-        <div className="container max-w-7xl mx-auto py-8 px-4 space-y-8 animate-in fade-in slide-in-from-bottom-4 duration-500">
+        <div className="w-full py-6 px-4 md:px-6 space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
             {/* Header Section */}
             <div className="relative rounded-[2rem] overflow-hidden bg-gradient-to-br from-primary/10 via-background to-background border shadow-xl shadow-primary/5">
                 {/* Decorative Elements */}
@@ -377,21 +377,18 @@ export default function ManagerProfilePage() {
 
             {/* Main Content Tabs */}
             <Tabs defaultValue="overview" className="w-full">
-                <div className="relative mb-8">
-                    <div className="absolute inset-0 bg-gradient-to-r from-background via-transparent to-background pointer-events-none z-10 w-full h-full" />
-                    <ScrollArea className="w-full whitespace-nowrap rounded-2xl border bg-muted/30 p-1.5 shadow-sm">
-                        <TabsList className="w-full flex justify-start h-12 bg-transparent gap-2 p-0">
-                            {['overview', 'activity', 'analytics', 'governance', 'station', 'manager-dashboard', 'manager-pricing', 'manager-reputation', 'manager-promotions'].map((tab) => (
-                                <TabsTrigger
-                                    key={tab}
-                                    value={tab}
-                                    className="h-full rounded-xl px-4 text-sm font-bold capitalize transition-all shrink-0 data-[state=active]:bg-primary data-[state=active]:text-white data-[state=active]:shadow-md hover:bg-muted/50 data-[state=active]:hover:bg-primary"
-                                >
-                                    {tab === 'manager-dashboard' ? "Manager's View" : tab === 'manager-pricing' ? "Pricing" : tab === 'manager-reputation' ? "Reputation" : tab === 'manager-promotions' ? "Promotions" : tab}
-                                </TabsTrigger>
-                            ))}
-                        </TabsList>
-                    </ScrollArea>
+                <div className="mb-6 overflow-x-auto [&::-webkit-scrollbar]:h-1 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-muted-foreground/20 [&::-webkit-scrollbar-track]:bg-transparent">
+                    <TabsList className="inline-flex h-11 bg-muted/40 rounded-xl p-1 gap-1 w-max">
+                        {['overview', 'activity', 'analytics', 'governance', 'station', 'manager-dashboard', 'manager-pricing', 'manager-reputation', 'manager-promotions'].map((tab) => (
+                            <TabsTrigger
+                                key={tab}
+                                value={tab}
+                                className="h-full rounded-lg px-4 text-sm font-semibold capitalize whitespace-nowrap data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm"
+                            >
+                                {tab === 'manager-dashboard' ? "Manager's View" : tab === 'manager-pricing' ? "Pricing" : tab === 'manager-reputation' ? "Reputation" : tab === 'manager-promotions' ? "Promotions" : tab}
+                            </TabsTrigger>
+                        ))}
+                    </TabsList>
                 </div>
 
                 <div className="min-h-[400px]">
