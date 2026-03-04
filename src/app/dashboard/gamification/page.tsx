@@ -3,9 +3,12 @@
 import {
     Gamepad2,
     Loader2,
+    MapPin,
     Pencil,
+    Plus,
     Save,
-    Settings
+    Settings,
+    Trash2
 } from "lucide-react"
 import { useCallback, useEffect, useState } from "react"
 
@@ -68,6 +71,18 @@ interface GamificationSetting {
     updated_at: string
 }
 
+const PREDEFINED_TRIGGERS = [
+    { value: "save_station_favorite", label: "Save/Track Station" },
+    { value: "submit_station_review", label: "Submit Review" },
+    { value: "complete_user_profile", label: "Complete Profile" },
+    { value: "share_station_link", label: "Share Station" },
+    { value: "report_fuel_price", label: "Report Fuel Price" },
+    { value: "add_new_station", label: "Add New Station" },
+    { value: "invite_friend", label: "Invite Friend" },
+    { value: "signup_with_code", label: "Signup with Code" },
+    { value: "daily_login", label: "Daily Login" },
+]
+
 export default function GamificationPage() {
     const { toast } = useToast()
 
@@ -84,10 +99,29 @@ export default function GamificationPage() {
     const [editFrequency, setEditFrequency] = useState("")
     const [editDescription, setEditDescription] = useState("")
     const [savingAction, setSavingAction] = useState(false)
+    const [deletingAction, setDeletingAction] = useState(false)
+
+    // Create dialog state
+    const [isAddingAction, setIsAddingAction] = useState(false)
+    const [newActionKey, setNewActionKey] = useState("")
+    const [newDisplayName, setNewDisplayName] = useState("")
+    const [newDescription, setNewDescription] = useState("")
+    const [newPoints, setNewPoints] = useState("")
+    const [newFrequency, setNewFrequency] = useState("unlimited")
+    const [savingNewAction, setSavingNewAction] = useState(false)
 
     // Local settings form state
     const [pointsPerNaira, setPointsPerNaira] = useState("")
     const [minRedemption, setMinRedemption] = useState("")
+
+    // Proximity Prompt settings
+    const [proximityEnabled, setProximityEnabled] = useState(true)
+    const [proximityRadius, setProximityRadius] = useState("200")
+    const [proximityDwell, setProximityDwell] = useState("20")
+    const [proximityMessage, setProximityMessage] = useState("Report a price to earn free airtime! 🎁")
+    const [proximityCooldown, setProximityCooldown] = useState("30")
+    const [proximityLoading, setProximityLoading] = useState(true)
+    const [savingProximity, setSavingProximity] = useState(false)
     const [cooldownDays, setCooldownDays] = useState("")
 
     // Fetch data
@@ -134,10 +168,70 @@ export default function GamificationPage() {
         }
     }, [toast])
 
+    // Fetch proximity prompt settings
+    const fetchProximitySettings = useCallback(async () => {
+        setProximityLoading(true)
+        try {
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('key, value')
+                .in('key', ['proximity_prompt_enabled', 'proximity_radius_meters', 'proximity_dwell_seconds', 'proximity_prompt_message', 'proximity_cooldown_minutes'])
+            if (error) throw error
+            data?.forEach((row: { key: string; value: unknown }) => {
+                const val = row.value
+                switch (row.key) {
+                    case 'proximity_prompt_enabled':
+                        setProximityEnabled(val === true || val === 'true')
+                        break
+                    case 'proximity_radius_meters':
+                        setProximityRadius(String(typeof val === 'number' ? val : parseInt(String(val), 10) || 200))
+                        break
+                    case 'proximity_dwell_seconds':
+                        setProximityDwell(String(typeof val === 'number' ? val : parseInt(String(val), 10) || 20))
+                        break
+                    case 'proximity_prompt_message':
+                        setProximityMessage(typeof val === 'string' ? val.replace(/^"|"$/g, '') : String(val))
+                        break
+                    case 'proximity_cooldown_minutes':
+                        setProximityCooldown(String(typeof val === 'number' ? val : parseInt(String(val), 10) || 30))
+                        break
+                }
+            })
+        } catch (error) {
+            console.error('Error fetching proximity settings:', error)
+        } finally {
+            setProximityLoading(false)
+        }
+    }, [])
+
+    // Save proximity prompt settings
+    const handleSaveProximitySettings = async () => {
+        setSavingProximity(true)
+        try {
+            const updates = [
+                { key: 'proximity_prompt_enabled', value: proximityEnabled },
+                { key: 'proximity_radius_meters', value: parseInt(proximityRadius) || 200 },
+                { key: 'proximity_dwell_seconds', value: parseInt(proximityDwell) || 20 },
+                { key: 'proximity_prompt_message', value: proximityMessage },
+                { key: 'proximity_cooldown_minutes', value: parseInt(proximityCooldown) || 30 },
+            ]
+            for (const update of updates) {
+                await supabase.from('app_settings').upsert({ key: update.key, value: update.value }, { onConflict: 'key' })
+            }
+            toast({ title: 'Saved', description: 'Proximity prompt settings updated.' })
+        } catch (error) {
+            console.error('Error saving proximity settings:', error)
+            toast({ title: 'Error', description: 'Failed to save proximity settings', variant: 'destructive' })
+        } finally {
+            setSavingProximity(false)
+        }
+    }
+
     useEffect(() => {
         fetchActions()
         fetchSettings()
-    }, [fetchActions, fetchSettings])
+        fetchProximitySettings()
+    }, [fetchActions, fetchSettings, fetchProximitySettings])
 
     // Toggle action enabled
     const handleToggleEnabled = async (action: GamificationAction) => {
@@ -213,6 +307,107 @@ export default function GamificationPage() {
         }
     }
 
+    // Delete custom action
+    const handleDeleteAction = async () => {
+        if (!editingAction) return
+
+        // Prevent deletion of core system rules
+        const coreRules = [
+            "report_fuel_price",
+            "add_new_station",
+            "invite_friend",
+            "signup_with_code",
+            "daily_login"
+        ];
+
+        if (coreRules.includes(editingAction.action_key)) {
+            toast({
+                title: "Cannot Delete Core Rule",
+                description: "This is a built-in system rule. You can disable it instead.",
+                variant: "destructive",
+            })
+            return
+        }
+
+        if (!confirm("Are you sure you want to delete this rule? This cannot be undone.")) return;
+
+        setDeletingAction(true)
+
+        try {
+            const { error } = await supabase
+                .from('gamification_config')
+                .delete()
+                .eq('id', editingAction.id)
+
+            if (error) throw error
+
+            toast({
+                title: "Action Deleted",
+                description: `${editingAction.display_name} has been removed`,
+            })
+
+            setEditingAction(null)
+            fetchActions()
+        } catch (error) {
+            console.error("Error deleting action:", error)
+            toast({
+                title: "Error",
+                description: "Failed to delete action",
+                variant: "destructive",
+            })
+        } finally {
+            setDeletingAction(false)
+        }
+    }
+
+    // Create new action
+    const handleCreateAction = async () => {
+        if (!newActionKey || !newDisplayName || !newPoints) {
+            toast({
+                title: "Validation Error",
+                description: "Action key, name, and points are required.",
+                variant: "destructive"
+            })
+            return
+        }
+        setSavingNewAction(true)
+
+        try {
+            const { error } = await supabase.from('gamification_config').upsert({
+                action_key: newActionKey,
+                display_name: newDisplayName,
+                description: newDescription,
+                points: parseInt(newPoints) || 0,
+                frequency_limit: newFrequency,
+                is_enabled: true
+            }, { onConflict: 'action_key' })
+            if (error) throw error
+
+            toast({
+                title: "Action Created",
+                description: "New gamification rule added successfully",
+            })
+
+            setIsAddingAction(false)
+            setNewActionKey("")
+            setNewDisplayName("")
+            setNewDescription("")
+            setNewPoints("")
+            setNewFrequency("unlimited")
+
+            fetchActions()
+        } catch (error: any) {
+            console.error("Error creating action:", error)
+            toast({
+                title: "Error",
+                description: error.message || "Failed to create action",
+                variant: "destructive",
+            })
+        } finally {
+            setSavingNewAction(false)
+        }
+    }
+
     // Save global settings
     const handleSaveSettings = async () => {
         setSavingSettings(true)
@@ -276,11 +471,17 @@ export default function GamificationPage() {
 
             {/* Action Configuration Table */}
             <Card>
-                <CardHeader>
-                    <CardTitle className="text-base font-medium">Point Actions</CardTitle>
-                    <CardDescription>
-                        Configure how many points users earn for each action
-                    </CardDescription>
+                <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
+                    <div className="space-y-1">
+                        <CardTitle className="text-base font-medium">Point Actions</CardTitle>
+                        <CardDescription>
+                            Configure how many points users earn for each action
+                        </CardDescription>
+                    </div>
+                    <Button onClick={() => setIsAddingAction(true)} size="sm">
+                        <Plus className="mr-2 h-4 w-4" />
+                        Add Rule
+                    </Button>
                 </CardHeader>
                 <CardContent>
                     {actionsLoading ? (
@@ -424,6 +625,99 @@ export default function GamificationPage() {
                 </CardContent>
             </Card>
 
+            {/* Proximity Prompt Settings */}
+            <Card>
+                <CardHeader>
+                    <CardTitle className="text-base font-medium flex items-center gap-2">
+                        <MapPin className="h-4 w-4" />
+                        Proximity Prompt
+                    </CardTitle>
+                    <CardDescription>
+                        Alert users near a station to report prices for free airtime
+                    </CardDescription>
+                </CardHeader>
+                <CardContent>
+                    {proximityLoading ? (
+                        <div className="space-y-4">
+                            <Skeleton className="h-10 w-full" />
+                            <Skeleton className="h-10 w-full" />
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            <div className="flex items-center justify-between">
+                                <div>
+                                    <Label>Enable Proximity Prompt</Label>
+                                    <p className="text-xs text-muted-foreground">Show alerts when users are near stations</p>
+                                </div>
+                                <Switch checked={proximityEnabled} onCheckedChange={setProximityEnabled} />
+                            </div>
+
+                            <Separator />
+
+                            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                                <div className="space-y-2">
+                                    <Label htmlFor="proximityRadius">Radius (meters)</Label>
+                                    <Input
+                                        id="proximityRadius"
+                                        type="number"
+                                        value={proximityRadius}
+                                        onChange={(e) => setProximityRadius(e.target.value)}
+                                        placeholder="200"
+                                    />
+                                    <p className="text-xs text-muted-foreground">How close the user must be</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="proximityDwell">Dwell Time (seconds)</Label>
+                                    <Input
+                                        id="proximityDwell"
+                                        type="number"
+                                        value={proximityDwell}
+                                        onChange={(e) => setProximityDwell(e.target.value)}
+                                        placeholder="20"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Time before prompt appears</p>
+                                </div>
+                                <div className="space-y-2">
+                                    <Label htmlFor="proximityCooldown">Cooldown (minutes)</Label>
+                                    <Input
+                                        id="proximityCooldown"
+                                        type="number"
+                                        value={proximityCooldown}
+                                        onChange={(e) => setProximityCooldown(e.target.value)}
+                                        placeholder="30"
+                                    />
+                                    <p className="text-xs text-muted-foreground">Min gap between prompts per station</p>
+                                </div>
+                            </div>
+
+                            <div className="space-y-2">
+                                <Label htmlFor="proximityMessage">Prompt Message</Label>
+                                <Input
+                                    id="proximityMessage"
+                                    value={proximityMessage}
+                                    onChange={(e) => setProximityMessage(e.target.value)}
+                                    placeholder="Report a price to earn free airtime!"
+                                />
+                                <p className="text-xs text-muted-foreground">This message is shown in the alert to the user</p>
+                            </div>
+
+                            <Separator />
+
+                            <div className="flex justify-end">
+                                <Button onClick={handleSaveProximitySettings} disabled={savingProximity}>
+                                    {savingProximity ? (
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    ) : (
+                                        <Save className="mr-2 h-4 w-4" />
+                                    )}
+                                    Save Proximity Settings
+                                </Button>
+                            </div>
+                        </div>
+                    )}
+                </CardContent>
+            </Card>
+
             {/* Edit Action Dialog */}
             <Dialog open={!!editingAction} onOpenChange={() => setEditingAction(null)}>
                 <DialogContent>
@@ -470,17 +764,115 @@ export default function GamificationPage() {
                         </div>
                     </div>
 
+                    <DialogFooter className="flex justify-between items-center sm:justify-between w-full">
+                        <Button
+                            variant="destructive"
+                            size="icon"
+                            onClick={handleDeleteAction}
+                            disabled={deletingAction || ["report_fuel_price", "add_new_station", "invite_friend", "signup_with_code", "daily_login"].includes(editingAction?.action_key || '')}
+                            title="Delete Rule"
+                        >
+                            {deletingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                        </Button>
+                        <div className="flex gap-2">
+                            <Button variant="outline" onClick={() => setEditingAction(null)}>
+                                Cancel
+                            </Button>
+                            <Button onClick={handleSaveAction} disabled={savingAction}>
+                                {savingAction ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Save className="mr-2 h-4 w-4" />
+                                )}
+                                Save Changes
+                            </Button>
+                        </div>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Add Action Dialog */}
+            <Dialog open={isAddingAction} onOpenChange={setIsAddingAction}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Add New Gamification Rule</DialogTitle>
+                        <DialogDescription>
+                            Create a new point-earning action. The Action Key must match the exact trigger in the app code (e.g., save_station_favorite).
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    <div className="space-y-4 py-4">
+                        <div className="space-y-2">
+                            <Label htmlFor="newActionKey">Action Key (Trigger Code)</Label>
+                            <Select value={newActionKey} onValueChange={setNewActionKey}>
+                                <SelectTrigger>
+                                    <SelectValue placeholder="Select a trigger code..." />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    {PREDEFINED_TRIGGERS.map((t) => (
+                                        <SelectItem key={t.value} value={t.value}>
+                                            {t.label} ({t.value})
+                                        </SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="newDisplayName">Display Name</Label>
+                            <Input
+                                id="newDisplayName"
+                                value={newDisplayName}
+                                onChange={(e) => setNewDisplayName(e.target.value)}
+                                placeholder="e.g. Save a Station"
+                            />
+                        </div>
+                        <div className="space-y-2">
+                            <Label htmlFor="newPoints">Points</Label>
+                            <Input
+                                id="newPoints"
+                                type="number"
+                                value={newPoints}
+                                onChange={(e) => setNewPoints(e.target.value)}
+                                placeholder="e.g. 10"
+                            />
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="newFrequency">Frequency Limit</Label>
+                            <Select value={newFrequency} onValueChange={setNewFrequency}>
+                                <SelectTrigger>
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                    <SelectItem value="unlimited">Unlimited</SelectItem>
+                                    <SelectItem value="once_daily">Once Daily</SelectItem>
+                                    <SelectItem value="once_ever">Once Ever</SelectItem>
+                                </SelectContent>
+                            </Select>
+                        </div>
+
+                        <div className="space-y-2">
+                            <Label htmlFor="newDescription">Description (Optional)</Label>
+                            <Input
+                                id="newDescription"
+                                value={newDescription}
+                                onChange={(e) => setNewDescription(e.target.value)}
+                                placeholder="Points for..."
+                            />
+                        </div>
+                    </div>
+
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setEditingAction(null)}>
+                        <Button variant="outline" onClick={() => setIsAddingAction(false)}>
                             Cancel
                         </Button>
-                        <Button onClick={handleSaveAction} disabled={savingAction}>
-                            {savingAction ? (
+                        <Button onClick={handleCreateAction} disabled={savingNewAction}>
+                            {savingNewAction ? (
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                             ) : (
                                 <Save className="mr-2 h-4 w-4" />
                             )}
-                            Save Changes
+                            Create Action
                         </Button>
                     </DialogFooter>
                 </DialogContent>
