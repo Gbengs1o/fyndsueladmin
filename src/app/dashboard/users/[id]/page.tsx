@@ -5,7 +5,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useAuth } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import { format, formatDistanceToNow } from "date-fns"
-import { ArrowLeft, DollarSign, ExternalLink, Flag, Gamepad2, ImageIcon, Lightbulb, Loader2, Mail, Phone, Pencil, ShieldX, Star, TrendingUp, User as UserIcon } from "lucide-react"
+import { Activity, ArrowLeft, Clock3, DollarSign, ExternalLink, Flag, Gamepad2, ImageIcon, Lightbulb, Loader2, Mail, Phone, Pencil, ShieldX, Star, TrendingUp, User as UserIcon } from "lucide-react"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
 import * as React from "react"
@@ -34,7 +34,20 @@ interface UserProfile {
     isAdmin: boolean;
     role: string;
     is_banned: boolean;
+    last_seen_at?: string | null;
+    last_activity_at?: string | null;
+    activity_status?: 'online' | 'today' | 'this_week' | 'inactive' | null;
+    events_24h?: number | null;
+    reports_7d?: number | null;
+    reviews_7d?: number | null;
+    suggestions_7d?: number | null;
+    flags_7d?: number | null;
+    favourites_7d?: number | null;
+    activity_score_7d?: number | null;
+    total_activity_events?: number | null;
 }
+
+type AdminUserDetails = Omit<UserProfile, "isAdmin">
 
 interface PriceReport {
     id: number;
@@ -191,11 +204,12 @@ export default function UserDetailPage() {
             setError("Could not find the requested user.")
             setUser(null)
         } else {
+            const profile = profileData as AdminUserDetails
             setUser({
-                ...profileData,
-                isAdmin: profileData.role === 'admin'
+                ...profile,
+                isAdmin: profile.role === 'admin'
             });
-            setNewName(profileData.full_name || "")
+            setNewName(profile.full_name || "")
         }
 
         if (reportsData) {
@@ -333,6 +347,24 @@ export default function UserDetailPage() {
         }
     }
 
+    const getActivityStatusStyle = (status?: UserProfile["activity_status"]) => {
+        switch (status) {
+            case "online":
+                return "bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400"
+            case "today":
+                return "bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400"
+            case "this_week":
+                return "bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400"
+            default:
+                return "bg-slate-50 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300"
+        }
+    }
+
+    const formatActivityStatus = (status?: UserProfile["activity_status"]) =>
+        (status || "inactive").replace("_", " ")
+
+    const getLastActiveAt = (profile: UserProfile) => profile.last_activity_at || profile.last_sign_in_at || null
+
     if (loading) {
         return (
             <div className="flex h-96 w-full items-center justify-center">
@@ -353,6 +385,8 @@ export default function UserDetailPage() {
         )
     }
 
+    const lastActiveAt = getLastActiveAt(user)
+
     return (
         <div className="flex flex-col gap-8 pb-10">
             <div className="flex items-center gap-4">
@@ -364,22 +398,25 @@ export default function UserDetailPage() {
                     <h1 className="text-2xl font-bold tracking-tight font-headline">User Profile</h1>
                     {user.isAdmin && <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">Administrator</Badge>}
                     {user.is_banned && <Badge variant="destructive">Banned</Badge>}
+                    <Badge variant="secondary" className={getActivityStatusStyle(user.activity_status)}>
+                        {formatActivityStatus(user.activity_status)}
+                    </Badge>
                 </div>
             </div>
 
             {/* Top Stats Cards */}
-            <div className="grid gap-4 md:grid-cols-4">
-                <Card>
+            <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+                {/* <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Trust Score</CardTitle>
-                        <TrendingUp className="h-4 w-4 text-muted-foreground" />
-                    </CardHeader>
-                    <CardContent>
-                        <div className="text-2xl font-bold">{trustScore}%</div>
-                        <Progress value={trustScore} className={`h-2 mt-2 ${trustScore < 50 ? "bg-red-100 [&>div]:bg-red-500" : "bg-green-100 [&>div]:bg-green-500"}`} />
-                        <p className="text-xs text-muted-foreground mt-2">Based on approved suggestions</p>
-                    </CardContent>
-                </Card>
+                <TrendingUp className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+                <div className="text-2xl font-bold">{trustScore}%</div>
+                <Progress value={trustScore} className={`h-2 mt-2 ${trustScore < 50 ? "bg-red-100 [&>div]:bg-red-500" : "bg-green-100 [&>div]:bg-green-500"}`} />
+                <p className="text-xs text-muted-foreground mt-2">Based on approved suggestions</p>
+            </CardContent>
+        </Card> */}
                 <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Contributions</CardTitle>
@@ -410,17 +447,41 @@ export default function UserDetailPage() {
                         <p className="text-xs text-muted-foreground">Content flagged</p>
                     </CardContent>
                 </Card>
-                <Card>
+                {/* <Card>
                     <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                         <CardTitle className="text-sm font-medium">Total Points</CardTitle>
-                        <Gamepad2 className="h-4 w-4 text-primary" />
+<Gamepad2 className="h-4 w-4 text-primary" />
+                    </CardHeader >
+    <CardContent>
+        <div className="text-2xl font-bold">{totalPoints.toLocaleString()}</div>
+        <p className="text-xs text-muted-foreground">Lifetime earned points</p>
+    </CardContent>
+                </Card > */}
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Last Active</CardTitle>
+                        <Clock3 className="h-4 w-4 text-muted-foreground" />
                     </CardHeader>
                     <CardContent>
-                        <div className="text-2xl font-bold">{totalPoints.toLocaleString()}</div>
-                        <p className="text-xs text-muted-foreground">Lifetime earned points</p>
+                        <div className="text-2xl font-bold">
+                            {lastActiveAt ? formatDistanceToNow(new Date(lastActiveAt), { addSuffix: true }) : "Never"}
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                            {lastActiveAt ? format(new Date(lastActiveAt), "MMM d, yyyy h:mm a") : "No activity recorded yet"}
+                        </p>
                     </CardContent>
                 </Card>
-            </div>
+                <Card>
+                    <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+                        <CardTitle className="text-sm font-medium">Activity Score (7d)</CardTitle>
+                        <Activity className="h-4 w-4 text-muted-foreground" />
+                    </CardHeader>
+                    <CardContent>
+                        <div className="text-2xl font-bold">{Number(user.activity_score_7d ?? 0).toLocaleString()}</div>
+                        <p className="text-xs text-muted-foreground">{Number(user.events_24h ?? 0).toLocaleString()} app events in last 24h</p>
+                    </CardContent>
+                </Card>
+            </div >
 
             <div className="grid gap-6 md:grid-cols-3">
                 {/* --- Left Column: Profile Card --- */}
@@ -483,6 +544,50 @@ export default function UserDetailPage() {
                                         <span className="font-medium text-foreground">{format(new Date(user.created_at), "MMMM d, yyyy")}</span>
                                     </div>
                                 </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-muted rounded-full"><Activity className="h-4 w-4 opacity-70" /></div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs text-muted-foreground uppercase">Activity Status</span>
+                                        <Badge variant="secondary" className={`w-fit mt-1 ${getActivityStatusStyle(user.activity_status)}`}>
+                                            {formatActivityStatus(user.activity_status)}
+                                        </Badge>
+                                    </div>
+                                </div>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 bg-muted rounded-full"><Clock3 className="h-4 w-4 opacity-70" /></div>
+                                    <div className="flex flex-col">
+                                        <span className="text-xs text-muted-foreground uppercase">Last Activity</span>
+                                        <span className="font-medium text-foreground">
+                                            {lastActiveAt ? formatDistanceToNow(new Date(lastActiveAt), { addSuffix: true }) : "Never"}
+                                        </span>
+                                        {lastActiveAt && (
+                                            <span className="text-xs text-muted-foreground">{format(new Date(lastActiveAt), "MMM d, yyyy h:mm a")}</span>
+                                        )}
+                                    </div>
+                                </div>
+                                {user.last_seen_at && (
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 bg-muted rounded-full"><Clock3 className="h-4 w-4 opacity-70" /></div>
+                                        <div className="flex flex-col">
+                                            <span className="text-xs text-muted-foreground uppercase">Device Last Seen</span>
+                                            <span className="font-medium text-foreground">
+                                                {formatDistanceToNow(new Date(user.last_seen_at), { addSuffix: true })}
+                                            </span>
+                                        </div>
+                                    </div>
+                                )}
+                                <div className="rounded-md border border-border/60 bg-muted/30 p-3 text-xs">
+                                    <div className="font-semibold text-foreground mb-2">Activity Breakdown (7d)</div>
+                                    <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+                                        <span>Reports: {Number(user.reports_7d ?? 0).toLocaleString()}</span>
+                                        <span>Reviews: {Number(user.reviews_7d ?? 0).toLocaleString()}</span>
+                                        <span>Suggestions: {Number(user.suggestions_7d ?? 0).toLocaleString()}</span>
+                                        <span>Flags: {Number(user.flags_7d ?? 0).toLocaleString()}</span>
+                                        <span>Favourites: {Number(user.favourites_7d ?? 0).toLocaleString()}</span>
+                                        <span>Events (24h): {Number(user.events_24h ?? 0).toLocaleString()}</span>
+                                        <span className="col-span-2 font-medium text-foreground">Total activity events: {Number(user.total_activity_events ?? 0).toLocaleString()}</span>
+                                    </div>
+                                </div>
                                 {user.phone && (
                                     <div className="flex items-center gap-3">
                                         <div className="p-2 bg-muted rounded-full"><Phone className="h-4 w-4 opacity-70" /></div>
@@ -513,7 +618,7 @@ export default function UserDetailPage() {
                             <TabsTrigger value="reports">Price Reports</TabsTrigger>
                             <TabsTrigger value="suggestions">Suggestions</TabsTrigger>
                             <TabsTrigger value="flags">Flags</TabsTrigger>
-                            <TabsTrigger value="gamification">Gamification</TabsTrigger>
+                            {/* <TabsTrigger value="gamification">Gamification</TabsTrigger> */}
                         </TabsList>
 
                         {/* --- Tab: Price Reports --- */}
@@ -654,7 +759,7 @@ export default function UserDetailPage() {
                         </TabsContent>
 
                         {/* --- Tab: Gamification --- */}
-                        <TabsContent value="gamification">
+                        {/* <TabsContent value="gamification">
                             <div className="flex flex-col gap-4">
                                 <Card>
                                     <CardHeader>
@@ -731,7 +836,7 @@ export default function UserDetailPage() {
                                     </CardContent>
                                 </Card>
                             </div>
-                        </TabsContent>
+                        </TabsContent> */}
                     </Tabs>
                 </div>
             </div>
@@ -767,6 +872,6 @@ export default function UserDetailPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-        </div>
+        </div >
     )
 }

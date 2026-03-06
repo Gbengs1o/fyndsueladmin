@@ -66,12 +66,24 @@ interface UserProfile {
   report_count: number
   suggestion_count?: number
   flag_count?: number
+  last_seen_at?: string | null
+  last_activity_at?: string | null
+  activity_status?: 'online' | 'today' | 'this_week' | 'inactive' | null
+  events_24h?: number
+  reports_7d?: number
+  reviews_7d?: number
+  suggestions_7d?: number
+  flags_7d?: number
+  favourites_7d?: number
+  activity_score_7d?: number
   total_count: number
 }
 
 interface Stats {
   total: number
   activeToday: number
+  active7d: number
+  onlineNow: number
   newThisWeek: number
   topContributors: number
 }
@@ -115,7 +127,7 @@ export default function UsersPage() {
   const [providerFilter, setProviderFilter] = useState("all")
 
   // Stats
-  const [stats, setStats] = useState<Stats>({ total: 0, activeToday: 0, newThisWeek: 0, topContributors: 0 })
+  const [stats, setStats] = useState<Stats>({ total: 0, activeToday: 0, active7d: 0, onlineNow: 0, newThisWeek: 0, topContributors: 0 })
 
   // Quick view dialog
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null)
@@ -125,24 +137,22 @@ export default function UsersPage() {
 
   // Fetch stats
   const fetchStats = useCallback(async () => {
-    const today = new Date()
-    today.setHours(0, 0, 0, 0)
+    const { data, error } = await supabase.rpc('get_user_activity_stats')
 
-    const weekAgo = new Date()
-    weekAgo.setDate(weekAgo.getDate() - 7)
+    if (error) {
+      console.error('Error fetching user activity stats:', error)
+      return
+    }
 
-    const [totalRes, activeRes, newRes, topRes] = await Promise.all([
-      supabase.from('profiles').select('*', { count: 'exact', head: true }),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('last_sign_in_at', today.toISOString()),
-      supabase.from('profiles').select('*', { count: 'exact', head: true }).gte('created_at', weekAgo.toISOString()),
-      supabase.from('price_reports').select('user_id', { count: 'exact', head: true }).gte('created_at', weekAgo.toISOString())
-    ])
+    const statsData = Array.isArray(data) ? data[0] : data
 
     setStats({
-      total: totalRes.count ?? 0,
-      activeToday: activeRes.count ?? 0,
-      newThisWeek: newRes.count ?? 0,
-      topContributors: topRes.count ?? 0
+      total: statsData?.total_users ?? 0,
+      activeToday: statsData?.active_today ?? 0,
+      active7d: statsData?.active_7d ?? 0,
+      onlineNow: statsData?.online_now ?? 0,
+      newThisWeek: statsData?.new_this_week ?? 0,
+      topContributors: statsData?.contributors_7d ?? 0,
     })
   }, [])
 
@@ -288,6 +298,21 @@ export default function UsersPage() {
     return { label: 'New', color: 'text-slate-600 bg-slate-50 dark:bg-slate-500/10' }
   }
 
+  const getActivityStatusStyle = (status?: UserProfile['activity_status']) => {
+    switch (status) {
+      case 'online':
+        return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+      case 'today':
+        return 'bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400'
+      case 'this_week':
+        return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
+      default:
+        return 'bg-slate-50 text-slate-700 dark:bg-slate-500/10 dark:text-slate-300'
+    }
+  }
+
+  const getLastActiveAt = (user: UserProfile) => user.last_activity_at || user.last_sign_in_at || null
+
   return (
     <div className="flex flex-col gap-6 py-4">
       {/* Header */}
@@ -308,7 +333,9 @@ export default function UsersPage() {
       {/* Stats Banner */}
       <div className="flex flex-wrap gap-3">
         <StatBadge icon={Users} label="Total Users" value={stats.total} />
+        <StatBadge icon={UserCheck} label="Online Now" value={stats.onlineNow} variant="success" />
         <StatBadge icon={UserCheck} label="Active Today" value={stats.activeToday} variant="success" />
+        <StatBadge icon={Clock} label="Active (7d)" value={stats.active7d} variant="warning" />
         <StatBadge icon={Clock} label="New This Week" value={stats.newThisWeek} variant="warning" />
         <StatBadge icon={TrendingUp} label="Contributors (7d)" value={stats.topContributors} />
       </div>
@@ -373,7 +400,7 @@ export default function UsersPage() {
               )}
 
               {!isLoading && users.length > 0 && users.map((user) => {
-                const activity = getActivityLevel(user.report_count)
+                const lastActiveAt = getLastActiveAt(user)
                 return (
                   <TableRow
                     key={user.id}
@@ -408,18 +435,27 @@ export default function UsersPage() {
                       </div>
                     </TableCell>
                     <TableCell>
-                      <Badge variant="secondary" className={`text-xs ${activity.color}`}>
-                        {activity.label}
-                      </Badge>
+                      <div className="flex flex-col gap-1">
+                        <Badge variant="secondary" className={`text-xs w-fit ${getActivityStatusStyle(user.activity_status)}`}>
+                          {(user.activity_status || 'inactive').replace('_', ' ')}
+                        </Badge>
+                        <span className="text-[11px] text-muted-foreground">
+                          {user.events_24h ?? 0} events / 24h
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell>
-                      <span className="font-medium text-sm">{user.report_count.toLocaleString()}</span>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-sm">{user.report_count.toLocaleString()}</span>
+                        <span className="text-[11px] text-muted-foreground">
+                          {user.reports_7d ?? 0} in 7d
+                        </span>
+                      </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
-                      {user.last_sign_in_at
-                        ? formatDistanceToNow(new Date(user.last_sign_in_at), { addSuffix: true })
-                        : 'Never'
-                      }
+                      {lastActiveAt
+                        ? formatDistanceToNow(new Date(lastActiveAt), { addSuffix: true })
+                        : 'Never'}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">
                       {format(new Date(user.created_at), "MMM d, yyyy")}
@@ -550,6 +586,21 @@ export default function UsersPage() {
                   </div>
                 </div>
               )}
+
+              <div className="rounded-lg border p-3 text-sm">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Last Active</span>
+                  <span className="font-medium">
+                    {getLastActiveAt(selectedUser)
+                      ? formatDistanceToNow(new Date(getLastActiveAt(selectedUser)!), { addSuffix: true })
+                      : 'Never'}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between mt-2">
+                  <span className="text-muted-foreground">Activity Score (7d)</span>
+                  <span className="font-medium">{selectedUser.activity_score_7d ?? 0}</span>
+                </div>
+              </div>
 
               {/* Trust Score */}
               <div>
