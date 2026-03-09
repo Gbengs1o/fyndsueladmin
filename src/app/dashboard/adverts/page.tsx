@@ -1,31 +1,34 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
 import { format } from "date-fns"
 import {
+    BarChart2,
+    BarChart3,
+    CheckSquare,
+    Clock,
+    ExternalLink,
+    Image as ImageIcon,
+    Info,
     Loader2,
     MoreHorizontal,
-    PlusCircle,
-    Trash2,
-    Image as ImageIcon,
-    Video,
-    ExternalLink,
-    MapPin,
-    Clock,
-    PlayCircle,
     Pencil,
-    Search,
+    PlayCircle,
     Power,
-    BarChart3,
-    BarChart2, // Added
-    Filter,
-    CheckSquare,
+    RefreshCcw,
+    Search,
     Square,
-    AlertCircle,
-    Download
+    Trash2,
+    Video
 } from "lucide-react"
+import { useCallback, useEffect, useMemo, useState } from "react"
 
 
+import { AdAnalyticsChart } from "@/components/adverts/ad-analytics-chart"
+import { AdInteractionsDialog } from "@/components/adverts/ad-interactions-dialog"; // Added
+import { CreateAdvertDialog } from "@/components/adverts/create-advert-dialog"
+import { EditAdvertDialog } from "@/components/adverts/edit-advert-dialog"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import {
     Card,
@@ -42,6 +45,8 @@ import {
     DropdownMenuSeparator,
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import { Input } from "@/components/ui/input"
+import { Switch } from "@/components/ui/switch"
 import {
     Table,
     TableBody,
@@ -50,15 +55,8 @@ import {
     TableHeader,
     TableRow,
 } from "@/components/ui/table"
-import { Badge } from "@/components/ui/badge"
-import { Input } from "@/components/ui/input"
-import { Switch } from "@/components/ui/switch"
 import { useToast } from "@/hooks/use-toast"
 import { supabase } from "@/lib/supabase"
-import { CreateAdvertDialog } from "@/components/adverts/create-advert-dialog"
-import { EditAdvertDialog } from "@/components/adverts/edit-advert-dialog"
-import { AdAnalyticsChart } from "@/components/adverts/ad-analytics-chart"
-import { AdInteractionsDialog } from "@/components/adverts/ad-interactions-dialog" // Added
 
 interface Advert {
     id: string
@@ -88,6 +86,7 @@ export default function AdvertsPage() {
     const [isLoading, setIsLoading] = useState(true)
     const [isGlobalEnabled, setIsGlobalEnabled] = useState(true)
     const [isGlobalLoading, setIsGlobalLoading] = useState(true)
+    const [isRefreshing, setIsRefreshing] = useState(false)
 
     // Filter & Search State
     const [searchQuery, setSearchQuery] = useState("")
@@ -177,6 +176,29 @@ export default function AdvertsPage() {
             toast({ variant: "destructive", title: "Error", description: "Failed to toggle global ads" })
         } finally {
             setIsGlobalLoading(false)
+        }
+    }
+
+    const handleRefresh = async () => {
+        setIsRefreshing(true)
+        try {
+            await Promise.all([
+                fetchAdverts(),
+                fetchSettings(),
+                fetchAnalytics()
+            ])
+            toast({
+                title: "Data Refreshed",
+                description: "The dashboard has been updated with the latest analytics.",
+            })
+        } catch (error) {
+            toast({
+                variant: "destructive",
+                title: "Refresh Failed",
+                description: "Failed to update dashboard data.",
+            })
+        } finally {
+            setIsRefreshing(false)
         }
     }
 
@@ -270,7 +292,18 @@ export default function AdvertsPage() {
             {/* Headers and Global Controls */}
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
-                    <h1 className="text-2xl font-semibold tracking-tight">Adverts Manager</h1>
+                    <div className="flex items-center gap-3">
+                        <h1 className="text-2xl font-semibold tracking-tight">Adverts Manager</h1>
+                        <Button
+                            variant="outline"
+                            size="icon"
+                            className="h-8 w-8"
+                            onClick={handleRefresh}
+                            disabled={isRefreshing || isLoading}
+                        >
+                            <RefreshCcw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                        </Button>
+                    </div>
                     <p className="text-sm text-muted-foreground">Supercharged campaign management and analytics</p>
                 </div>
                 <div className="flex items-center gap-4 bg-muted/50 p-2 rounded-lg border">
@@ -285,6 +318,40 @@ export default function AdvertsPage() {
                     />
                 </div>
             </div>
+
+            {/* Metrics Education Info Box */}
+            <Alert className="bg-primary/5 border-primary/20">
+                <Info className="h-4 w-4 text-primary" />
+                <AlertTitle className="text-primary font-bold">Understanding Ad Metrics</AlertTitle>
+                <AlertDescription className="text-sm">
+                    <div className="mt-2 grid gap-4 md:grid-cols-3">
+                        <div className="space-y-1">
+                            <p className="font-semibold flex items-center gap-2">
+                                <ImageIcon className="h-3 w-3" /> Impressions (Views)
+                            </p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                Counted every time an ad is rendered on a user's device. This tracks potential reach across the app.
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="font-semibold flex items-center gap-2">
+                                <PlayCircle className="h-3 w-3" /> Clicks
+                            </p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                Triggered when a user taps the ad or clicks the CTA link. Represents active lead generation.
+                            </p>
+                        </div>
+                        <div className="space-y-1">
+                            <p className="font-semibold flex items-center gap-2">
+                                <Clock className="h-3 w-3" /> Scheduled/Active
+                            </p>
+                            <p className="text-xs text-muted-foreground leading-relaxed">
+                                Metrics are only updated during the ad's validity period. Expired ads retain historical data.
+                            </p>
+                        </div>
+                    </div>
+                </AlertDescription>
+            </Alert>
 
             {/* Analytics Section */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
