@@ -16,6 +16,23 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
+import {
+    Select,
+    SelectContent,
+    SelectItem,
+    SelectTrigger,
+    SelectValue,
+} from "@/components/ui/select"
+import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog"
+import { Label } from "@/components/ui/label"
+import { Eye } from "lucide-react"
 
 interface User {
     id: string
@@ -38,7 +55,9 @@ export default function BroadcastPage() {
     // Email Form State
     const [subject, setSubject] = useState("")
     const [message, setMessage] = useState("")
+    const [category, setCategory] = useState("general")
     const [sending, setSending] = useState(false)
+    const [isPreviewOpen, setIsPreviewOpen] = useState(false)
 
     // SMTP Settings State
     const [smtpConfig, setSmtpConfig] = useState({
@@ -179,7 +198,8 @@ export default function BroadcastPage() {
                     recipients,
                     subject,
                     message,
-                    smtpSettings: smtpConfig
+                    smtpSettings: smtpConfig,
+                    category
                 })
             })
 
@@ -418,7 +438,20 @@ export default function BroadcastPage() {
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Subject</label>
+                                <Label>Template Category</Label>
+                                <Select value={category} onValueChange={setCategory}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Select a template" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        <SelectItem value="general">General Announcement (Indigo)</SelectItem>
+                                        <SelectItem value="alert">Urgent Alert (Red)</SelectItem>
+                                        <SelectItem value="update">Feature Update (Blue)</SelectItem>
+                                    </SelectContent>
+                                </Select>
+                            </div>
+                            <div className="space-y-2">
+                                <Label>Subject</Label>
                                 <Input
                                     placeholder="e.g. Important Update regarding Fuel Prices"
                                     value={subject}
@@ -426,16 +459,55 @@ export default function BroadcastPage() {
                                 />
                             </div>
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Message Body</label>
+                                <Label>Message Body</Label>
                                 <Textarea
                                     placeholder="Type your message here..."
                                     className="min-h-[300px] resize-none"
                                     value={message}
                                     onChange={(e) => setMessage(e.target.value)}
                                 />
-                                <p className="text-xs text-muted-foreground">
-                                    Note: Emails will be sent individually to each recipient.
-                                </p>
+                                <div className="flex items-center justify-between">
+                                    <p className="text-xs text-muted-foreground">
+                                        Emails are sent individually.
+                                    </p>
+                                    <Dialog open={isPreviewOpen} onOpenChange={setIsPreviewOpen}>
+                                        <DialogTrigger asChild>
+                                            <Button variant="outline" size="sm" className="h-7 text-xs">
+                                                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                                                Preview Email
+                                            </Button>
+                                        </DialogTrigger>
+                                        <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 border-none shadow-2xl">
+                                            <DialogHeader className="p-6 bg-background border-b z-10">
+                                                <DialogTitle>Email Preview</DialogTitle>
+                                                <DialogDescription>
+                                                    Subject: {subject || '(No Subject)'}
+                                                </DialogDescription>
+                                            </DialogHeader>
+                                            <div className="flex-1 overflow-auto bg-muted/30 p-4 md:p-8 flex justify-center">
+                                                <div className="w-full max-w-[600px] shadow-sm rounded-lg overflow-hidden border bg-white">
+                                                    {/* Mocking the backend template style */}
+                                                    <div style={{ backgroundColor: category === 'alert' ? '#ef4444' : category === 'update' ? '#3b82f6' : '#6366f1', padding: '32px 24px', textAlign: 'center' }}>
+                                                        <span style={{ color: '#ffffff', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.025em' }}>FYND FUEL</span>
+                                                    </div>
+                                                    <div style={{ padding: '40px 32px' }}>
+                                                        <div style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>Hello [User Name],</div>
+                                                        <div style={{ fontSize: '16px', color: '#374151', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
+                                                            {message || 'Your message will appear here...'}
+                                                        </div>
+                                                    </div>
+                                                    <div style={{ padding: '32px', backgroundColor: '#f3f4f6', textAlign: 'center', borderTop: '1px solid #e5e7eb' }}>
+                                                        <p style={{ fontSize: '12px', color: '#6b7280', margin: '0' }}>You received this email because you are a registered user of FYND FUEL.</p>
+                                                        <p style={{ fontSize: '12px', color: '#6b7280', margin: '8px 0 0 0' }}>&copy; {new Date().getFullYear()} FYND FUEL. All rights reserved.</p>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="p-4 bg-background border-t text-center">
+                                                <p className="text-[10px] text-muted-foreground">Mobile responsive preview. Actual appearance may vary slightly between email clients.</p>
+                                            </div>
+                                        </DialogContent>
+                                    </Dialog>
+                                </div>
                             </div>
                         </CardContent>
                         <CardFooter>
