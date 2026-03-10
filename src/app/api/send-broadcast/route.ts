@@ -2,9 +2,18 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
 
+interface TemplateSettings {
+    headerColor: string;
+    logoText: string;
+    logoImageUrl: string;
+    greetingPrefix: string;
+    footerText: string;
+    showFooter: boolean;
+}
+
 export async function POST(req: Request) {
     try {
-        const { recipients, subject, message, smtpSettings, category } = await req.json();
+        const { recipients, subject, message, smtpSettings, templateSettings } = await req.json();
 
         if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
             return NextResponse.json({ error: 'No recipients provided' }, { status: 400 });
@@ -22,23 +31,36 @@ export async function POST(req: Request) {
         const transporter = nodemailer.createTransport({
             host: smtpSettings.host,
             port: smtpSettings.port || 465,
-            secure: smtpSettings.port === 465 || smtpSettings.secure !== false, // Default to secure if port 465 or not specified otherwise
+            secure: smtpSettings.port === 465 || smtpSettings.secure !== false,
             auth: {
                 user: smtpSettings.user,
                 pass: smtpSettings.password,
             },
         });
 
-        // Template rendering logic
-        const getHtmlTemplate = (name: string, content: string, category: string = 'general') => {
-            const colors = {
-                general: '#6366f1', // Indigo
-                alert: '#ef4444',   // Red
-                update: '#3b82f6'   // Blue
-            } as Record<string, string>;
+        // Merge defaults with user-provided template settings
+        const tpl: TemplateSettings = {
+            headerColor: templateSettings?.headerColor || '#6366f1',
+            logoText: templateSettings?.logoText || '',
+            logoImageUrl: templateSettings?.logoImageUrl || '',
+            greetingPrefix: templateSettings?.greetingPrefix || 'Hello',
+            footerText: templateSettings?.footerText || '',
+            showFooter: templateSettings?.showFooter !== false,
+        };
 
-            const accentColor = colors[category] || colors.general;
+        // Template rendering logic — fully dynamic
+        const getHtmlTemplate = (name: string, content: string) => {
             const formattedMessage = content.replace(/\n/g, '<br>');
+
+            const logoHtml = tpl.logoImageUrl
+                ? `<img src="${tpl.logoImageUrl}" alt="${tpl.logoText || 'Logo'}" style="max-height: 48px; max-width: 200px;" />`
+                : `<span style="color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: -0.025em;">${tpl.logoText || ''}</span>`;
+
+            const footerHtml = tpl.showFooter && tpl.footerText
+                ? `<div style="padding: 32px; background-color: #f3f4f6; text-align: center; border-top: 1px solid #e5e7eb;">
+                    <p style="font-size: 12px; color: #6b7280; margin: 0;">${tpl.footerText}</p>
+                </div>`
+                : '';
 
             return `
 <!DOCTYPE html>
@@ -48,30 +70,18 @@ export async function POST(req: Request) {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; line-height: 1.6; color: #1f2937; margin: 0; padding: 0; background-color: #f9fafb; }
-        .wrapper { max-width: 600px; margin: 0 auto; background-color: #ffffff; }
-        .header { background-color: ${accentColor}; padding: 32px 24px; text-align: center; }
-        .logo { color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: -0.025em; text-decoration: none; }
-        .content { padding: 40px 32px; }
-        .greeting { font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 16px; }
-        .message { font-size: 16px; color: #374151; margin-bottom: 32px; }
-        .footer { padding: 32px; background-color: #f3f4f6; text-align: center; border-top: 1px solid #e5e7eb; }
-        .footer-text { font-size: 12px; color: #6b7280; margin: 0; }
-        .btn { display: inline-block; padding: 12px 24px; background-color: ${accentColor}; color: #ffffff !important; text-decoration: none; border-radius: 6px; font-weight: 500; margin-top: 16px; }
     </style>
 </head>
 <body>
-    <div class="wrapper">
-        <div class="header">
-            <a href="#" class="logo">FYND FUEL</a>
+    <div style="max-width: 600px; margin: 0 auto; background-color: #ffffff;">
+        <div style="background-color: ${tpl.headerColor}; padding: 32px 24px; text-align: center;">
+            ${logoHtml}
         </div>
-        <div class="content">
-            <div class="greeting">Hello ${name || 'User'},</div>
-            <div class="message">${formattedMessage}</div>
+        <div style="padding: 40px 32px;">
+            <div style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 16px;">${tpl.greetingPrefix} ${name || 'User'},</div>
+            <div style="font-size: 16px; color: #374151; margin-bottom: 32px; line-height: 1.6;">${formattedMessage}</div>
         </div>
-        <div class="footer">
-            <p class="footer-text">You received this email because you are a registered user of FYND FUEL.</p>
-            <p class="footer-text" style="margin-top: 8px;">&copy; ${new Date().getFullYear()} FYND FUEL. All rights reserved.</p>
-        </div>
+        ${footerHtml}
     </div>
 </body>
 </html>`;
@@ -82,10 +92,10 @@ export async function POST(req: Request) {
 
         const emailPromises = batch.map((recipient: { email: string, name: string }) => {
             return transporter.sendMail({
-                from: `"${smtpSettings.fromName || 'FYND FUEL'}" <${smtpSettings.fromEmail}>`,
+                from: `"${smtpSettings.fromName || 'Support'}" <${smtpSettings.fromEmail}>`,
                 to: recipient.email,
                 subject: subject,
-                html: getHtmlTemplate(recipient.name, message, category || 'general')
+                html: getHtmlTemplate(recipient.name, message)
             });
         });
 
@@ -94,7 +104,6 @@ export async function POST(req: Request) {
         const successCount = results.filter(r => r.status === 'fulfilled').length;
         const failureCount = results.filter(r => r.status === 'rejected').length;
 
-        // Log failures if any
         if (failureCount > 0) {
             const failures = results
                 .filter(r => r.status === 'rejected')

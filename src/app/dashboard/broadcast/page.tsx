@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Mail, Send, CheckSquare, Square, Search, User, Settings, Save, ChevronDown, ChevronUp } from "lucide-react"
+import { Loader2, Mail, Send, CheckSquare, Square, Search, User, Settings, Save, ChevronDown, ChevronUp, Palette, Image, Type } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -55,9 +55,20 @@ export default function BroadcastPage() {
     // Email Form State
     const [subject, setSubject] = useState("")
     const [message, setMessage] = useState("")
-    const [category, setCategory] = useState("general")
     const [sending, setSending] = useState(false)
     const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+
+    // Template Settings State
+    const [templateSettings, setTemplateSettings] = useState({
+        headerColor: "#6366f1",
+        logoText: "",
+        logoImageUrl: "",
+        greetingPrefix: "Hello",
+        footerText: "",
+        showFooter: true
+    })
+    const [showTemplateSettings, setShowTemplateSettings] = useState(false)
+    const [isSavingTemplate, setIsSavingTemplate] = useState(false)
 
     // SMTP Settings State
     const [smtpConfig, setSmtpConfig] = useState({
@@ -120,12 +131,47 @@ export default function BroadcastPage() {
         }
     }, [])
 
+    const fetchTemplateSettings = useCallback(async () => {
+        try {
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', 'email_template_settings')
+                .single()
+
+            if (error) {
+                if (error.code !== 'PGRST116') throw error
+            } else if (data?.value) {
+                setTemplateSettings(data.value)
+            }
+        } catch (error: any) {
+            console.error("Error fetching template settings:", error)
+        }
+    }, [])
+
     useEffect(() => {
         if (!authLoading) {
             fetchUsers()
             fetchSmtpConfig()
+            fetchTemplateSettings()
         }
-    }, [fetchUsers, fetchSmtpConfig, authLoading])
+    }, [fetchUsers, fetchSmtpConfig, fetchTemplateSettings, authLoading])
+
+    const saveTemplateSettings = async () => {
+        setIsSavingTemplate(true)
+        try {
+            const { error } = await supabase
+                .from('app_settings')
+                .upsert({ key: 'email_template_settings', value: templateSettings }, { onConflict: 'key' })
+
+            if (error) throw error
+            toast({ title: "Template Saved", description: "Email template settings saved successfully." })
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Save Failed", description: error.message })
+        } finally {
+            setIsSavingTemplate(false)
+        }
+    }
 
     const saveSmtpConfig = async () => {
         // Validation
@@ -199,7 +245,7 @@ export default function BroadcastPage() {
                     subject,
                     message,
                     smtpSettings: smtpConfig,
-                    category
+                    templateSettings
                 })
             })
 
@@ -437,19 +483,96 @@ export default function BroadcastPage() {
                             </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                            <div className="space-y-2">
-                                <Label>Template Category</Label>
-                                <Select value={category} onValueChange={setCategory}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Select a template" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        <SelectItem value="general">General Announcement (Indigo)</SelectItem>
-                                        <SelectItem value="alert">Urgent Alert (Red)</SelectItem>
-                                        <SelectItem value="update">Feature Update (Blue)</SelectItem>
-                                    </SelectContent>
-                                </Select>
+                            {/* Template Customization Toggle */}
+                            <div
+                                className="flex items-center justify-between p-3 rounded-lg border bg-muted/30 cursor-pointer select-none"
+                                onClick={() => setShowTemplateSettings(!showTemplateSettings)}
+                            >
+                                <div className="flex items-center gap-2">
+                                    <Palette className="h-4 w-4 text-primary" />
+                                    <span className="text-sm font-medium">Customize Template</span>
+                                </div>
+                                {showTemplateSettings ? <ChevronUp className="h-4 w-4 text-muted-foreground" /> : <ChevronDown className="h-4 w-4 text-muted-foreground" />}
                             </div>
+
+                            {showTemplateSettings && (
+                                <div className="space-y-3 p-3 rounded-lg border bg-background">
+                                    <div className="grid grid-cols-2 gap-3">
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Header Color</Label>
+                                            <div className="flex items-center gap-2">
+                                                <input
+                                                    type="color"
+                                                    value={templateSettings.headerColor}
+                                                    onChange={(e) => setTemplateSettings({ ...templateSettings, headerColor: e.target.value })}
+                                                    className="w-8 h-8 rounded cursor-pointer border-0 p-0"
+                                                />
+                                                <Input
+                                                    value={templateSettings.headerColor}
+                                                    onChange={(e) => setTemplateSettings({ ...templateSettings, headerColor: e.target.value })}
+                                                    className="h-8 text-xs font-mono"
+                                                />
+                                            </div>
+                                        </div>
+                                        <div className="space-y-1">
+                                            <Label className="text-xs">Greeting Prefix</Label>
+                                            <Input
+                                                placeholder="Hello"
+                                                value={templateSettings.greetingPrefix}
+                                                onChange={(e) => setTemplateSettings({ ...templateSettings, greetingPrefix: e.target.value })}
+                                                className="h-8 text-xs"
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Logo Text (shown in header)</Label>
+                                        <Input
+                                            placeholder="e.g. FYND FUEL"
+                                            value={templateSettings.logoText}
+                                            onChange={(e) => setTemplateSettings({ ...templateSettings, logoText: e.target.value })}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Logo Image URL (overrides text)</Label>
+                                        <Input
+                                            placeholder="https://your-logo.com/logo.png"
+                                            value={templateSettings.logoImageUrl}
+                                            onChange={(e) => setTemplateSettings({ ...templateSettings, logoImageUrl: e.target.value })}
+                                            className="h-8 text-xs"
+                                        />
+                                    </div>
+                                    <div className="space-y-1">
+                                        <Label className="text-xs">Footer Text (leave empty to hide footer)</Label>
+                                        <Textarea
+                                            placeholder="e.g. © 2026 Your Company. All rights reserved."
+                                            value={templateSettings.footerText}
+                                            onChange={(e) => setTemplateSettings({ ...templateSettings, footerText: e.target.value })}
+                                            className="min-h-[60px] text-xs resize-none"
+                                        />
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <Checkbox
+                                                checked={templateSettings.showFooter}
+                                                onCheckedChange={(checked) => setTemplateSettings({ ...templateSettings, showFooter: checked as boolean })}
+                                            />
+                                            <Label className="text-xs">Show Footer</Label>
+                                        </div>
+                                        <Button
+                                            variant="outline"
+                                            size="sm"
+                                            className="h-7 text-xs"
+                                            onClick={saveTemplateSettings}
+                                            disabled={isSavingTemplate}
+                                        >
+                                            {isSavingTemplate ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Save className="mr-1 h-3 w-3" />}
+                                            Save Template
+                                        </Button>
+                                    </div>
+                                </div>
+                            )}
+
                             <div className="space-y-2">
                                 <Label>Subject</Label>
                                 <Input
@@ -462,7 +585,7 @@ export default function BroadcastPage() {
                                 <Label>Message Body</Label>
                                 <Textarea
                                     placeholder="Type your message here..."
-                                    className="min-h-[300px] resize-none"
+                                    className="min-h-[200px] resize-none"
                                     value={message}
                                     onChange={(e) => setMessage(e.target.value)}
                                 />
@@ -474,7 +597,7 @@ export default function BroadcastPage() {
                                         <DialogTrigger asChild>
                                             <Button variant="outline" size="sm" className="h-7 text-xs">
                                                 <Eye className="mr-1.5 h-3.5 w-3.5" />
-                                                Preview Email
+                                                Preview
                                             </Button>
                                         </DialogTrigger>
                                         <DialogContent className="max-w-2xl max-h-[90vh] overflow-hidden flex flex-col p-0 gap-0 border-none shadow-2xl">
@@ -486,24 +609,25 @@ export default function BroadcastPage() {
                                             </DialogHeader>
                                             <div className="flex-1 overflow-auto bg-muted/30 p-4 md:p-8 flex justify-center">
                                                 <div className="w-full max-w-[600px] shadow-sm rounded-lg overflow-hidden border bg-white">
-                                                    {/* Mocking the backend template style */}
-                                                    <div style={{ backgroundColor: category === 'alert' ? '#ef4444' : category === 'update' ? '#3b82f6' : '#6366f1', padding: '32px 24px', textAlign: 'center' }}>
-                                                        <span style={{ color: '#ffffff', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.025em' }}>FYND FUEL</span>
+                                                    <div style={{ backgroundColor: templateSettings.headerColor, padding: '32px 24px', textAlign: 'center' }}>
+                                                        {templateSettings.logoImageUrl ? (
+                                                            <img src={templateSettings.logoImageUrl} alt={templateSettings.logoText || 'Logo'} style={{ maxHeight: '48px', maxWidth: '200px' }} />
+                                                        ) : (
+                                                            <span style={{ color: '#ffffff', fontSize: '24px', fontWeight: '700', letterSpacing: '-0.025em' }}>{templateSettings.logoText || ''}</span>
+                                                        )}
                                                     </div>
                                                     <div style={{ padding: '40px 32px' }}>
-                                                        <div style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>Hello [User Name],</div>
+                                                        <div style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>{templateSettings.greetingPrefix || 'Hello'} [User Name],</div>
                                                         <div style={{ fontSize: '16px', color: '#374151', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
                                                             {message || 'Your message will appear here...'}
                                                         </div>
                                                     </div>
-                                                    <div style={{ padding: '32px', backgroundColor: '#f3f4f6', textAlign: 'center', borderTop: '1px solid #e5e7eb' }}>
-                                                        <p style={{ fontSize: '12px', color: '#6b7280', margin: '0' }}>You received this email because you are a registered user of FYND FUEL.</p>
-                                                        <p style={{ fontSize: '12px', color: '#6b7280', margin: '8px 0 0 0' }}>&copy; {new Date().getFullYear()} FYND FUEL. All rights reserved.</p>
-                                                    </div>
+                                                    {templateSettings.showFooter && templateSettings.footerText && (
+                                                        <div style={{ padding: '32px', backgroundColor: '#f3f4f6', textAlign: 'center', borderTop: '1px solid #e5e7eb' }}>
+                                                            <p style={{ fontSize: '12px', color: '#6b7280', margin: '0', whiteSpace: 'pre-wrap' }}>{templateSettings.footerText}</p>
+                                                        </div>
+                                                    )}
                                                 </div>
-                                            </div>
-                                            <div className="p-4 bg-background border-t text-center">
-                                                <p className="text-[10px] text-muted-foreground">Mobile responsive preview. Actual appearance may vary slightly between email clients.</p>
                                             </div>
                                         </DialogContent>
                                     </Dialog>
