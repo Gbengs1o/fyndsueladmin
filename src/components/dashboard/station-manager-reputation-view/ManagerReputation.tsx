@@ -107,6 +107,7 @@ export default function ManagerReputation({ stationId, managerId }: ManagerReput
                     trustScorePercent,
                     milestones
                 });
+                setLoading(false);
 
             } catch (error) {
                 console.error("Error fetching reputation data:", error);

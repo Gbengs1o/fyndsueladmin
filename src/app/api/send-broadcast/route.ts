@@ -1,12 +1,10 @@
 
 import { NextResponse } from 'next/server';
-import { Resend } from 'resend';
-
-const resend = new Resend(process.env.RESEND_API_KEY);
+import nodemailer from 'nodemailer';
 
 export async function POST(req: Request) {
     try {
-        const { recipients, subject, message } = await req.json();
+        const { recipients, subject, message, smtpSettings } = await req.json();
 
         if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
             return NextResponse.json({ error: 'No recipients provided' }, { status: 400 });
@@ -16,18 +14,27 @@ export async function POST(req: Request) {
             return NextResponse.json({ error: 'Subject and message are required' }, { status: 400 });
         }
 
-        // In a production environment, you might want to use a queue for bulk sending.
-        // For this scope, we will loop and send.
-        // Ideally, utilize Resend's batch sending capabilities if available or send individually.
-        // Sending individually to ensure privacy (no CC/BCC exposure) and personalization if needed.
+        if (!smtpSettings || !smtpSettings.host || !smtpSettings.user || !smtpSettings.password) {
+            return NextResponse.json({ error: 'Valid SMTP configuration is required' }, { status: 400 });
+        }
 
-        // We'll limit the batch size for this demo to avoid timeouts on Vercel/Node functions (10s limit often).
-        // Let's grab the first 50 for safety in this synchronous handler.
+        // Create SMTP transporter
+        const transporter = nodemailer.createTransport({
+            host: smtpSettings.host,
+            port: smtpSettings.port || 465,
+            secure: smtpSettings.port === 465 || smtpSettings.secure !== false, // Default to secure if port 465 or not specified otherwise
+            auth: {
+                user: smtpSettings.user,
+                pass: smtpSettings.password,
+            },
+        });
+
+        // Limit the batch size to avoid timeouts
         const batch = recipients.slice(0, 50);
 
         const emailPromises = batch.map((recipient: { email: string, name: string }) => {
-            return resend.emails.send({
-                from: 'Support <onboarding@resend.dev>', // Update this with your verified domain in Resend dashboard
+            return transporter.sendMail({
+                from: `"${smtpSettings.fromName || 'Support'}" <${smtpSettings.fromEmail}>`,
                 to: recipient.email,
                 subject: subject,
                 html: `
@@ -49,6 +56,14 @@ export async function POST(req: Request) {
 
         const successCount = results.filter(r => r.status === 'fulfilled').length;
         const failureCount = results.filter(r => r.status === 'rejected').length;
+
+        // Log failures if any
+        if (failureCount > 0) {
+            const failures = results
+                .filter(r => r.status === 'rejected')
+                .map((r: any) => r.reason?.message || 'Unknown error');
+            console.error('Email failures:', failures);
+        }
 
         return NextResponse.json({
             success: true,

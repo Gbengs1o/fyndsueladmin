@@ -50,7 +50,7 @@ export default function StationDetailsModal({ station, onClose }: StationDetails
                     <section className={styles.modalSection}>
                         <h4><MapPin size={16} /> Location Info</h4>
                         <div className={styles.detailCard} style={{ background: 'hsl(var(--background))', border: '1px solid hsl(var(--border))' }}>
-                            <p><strong>Address:</strong> {station.address || 'N/A'}</p>
+                            <p><strong>Address:</strong> {station.address ? station.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : 'N/A'}</p>
                             <p><strong>State:</strong> {station.state}</p>
                         </div>
                     </section>

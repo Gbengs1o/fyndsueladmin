@@ -372,7 +372,7 @@ export default function StationDetailPage() {
                             {station.is_out_of_stock && <Badge variant="destructive">OUT OF STOCK</Badge>}
                         </div>
                         <div className="flex items-center text-muted-foreground gap-2 text-sm mt-1">
-                            <MapPin className="h-4 w-4" /> {station.address}
+                            <MapPin className="h-4 w-4" /> {station.address ? station.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : 'No address'}
                         </div>
                     </div>
                 </div>

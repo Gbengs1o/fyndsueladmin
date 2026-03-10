@@ -331,7 +331,7 @@ export default function SuggestedStationsPage() {
   }
 
   // Use suggestions directly since they are already filtered by server
-  const displaySuggestions = suggestions
+  const displaySuggestions = suggestions;
 
   return (
     <div className="flex flex-col gap-6 py-4">
@@ -410,7 +410,9 @@ export default function SuggestedStationsPage() {
                         <TableRow key={item.id} className="table-row-hover cursor-pointer" onClick={() => openDetail(item)}>
                           <TableCell>
                             <div className="font-medium text-sm">{item.name || "Unnamed Station"}</div>
-                            <div className="text-xs text-muted-foreground truncate max-w-[200px]">{item.address || "No address"}</div>
+                            <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                              {item.address ? item.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : "No address"}
+                            </div>
                           </TableCell>
                           <TableCell>
                             {item.latitude && item.longitude ? (
@@ -576,7 +578,11 @@ export default function SuggestedStationsPage() {
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="text-xs text-muted-foreground uppercase">Address</span>
-                  <div className="font-medium text-sm">{selectedSuggestion.address || 'Not provided'}</div>
+                  <div className="font-medium text-sm">
+                    {selectedSuggestion.address
+                      ? selectedSuggestion.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '')
+                      : 'Not provided'}
+                  </div>
                 </div>
                 <div>
                   <span className="text-xs text-muted-foreground uppercase">Coordinates</span>

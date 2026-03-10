@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Mail, Send, CheckSquare, Square, Search, User } from "lucide-react"
+import { Loader2, Mail, Send, CheckSquare, Square, Search, User, Settings, Save, ChevronDown, ChevronUp } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -40,6 +40,20 @@ export default function BroadcastPage() {
     const [message, setMessage] = useState("")
     const [sending, setSending] = useState(false)
 
+    // SMTP Settings State
+    const [smtpConfig, setSmtpConfig] = useState({
+        host: "",
+        port: 465,
+        user: "",
+        password: "",
+        fromEmail: "",
+        fromName: "",
+        secure: true
+    })
+    const [showSmtpSettings, setShowSmtpSettings] = useState(false)
+    const [isSavingSmtp, setIsSavingSmtp] = useState(false)
+    const [isLoadingSmtp, setIsLoadingSmtp] = useState(false)
+
     const fetchUsers = useCallback(async () => {
         setLoading(true)
         // We reuse the admin RPC that correctly fetches emails from auth.users
@@ -66,11 +80,60 @@ export default function BroadcastPage() {
         setLoading(false)
     }, [searchTerm, toast])
 
+    const fetchSmtpConfig = useCallback(async () => {
+        setIsLoadingSmtp(true)
+        try {
+            const { data, error } = await supabase
+                .from('app_settings')
+                .select('value')
+                .eq('key', 'smtp_config')
+                .single()
+
+            if (error) {
+                if (error.code !== 'PGRST116') throw error // Ignore "no rows found"
+            } else if (data?.value) {
+                setSmtpConfig(data.value)
+            }
+        } catch (error: any) {
+            console.error("Error fetching SMTP config:", error)
+        } finally {
+            setIsLoadingSmtp(false)
+        }
+    }, [])
+
     useEffect(() => {
         if (!authLoading) {
             fetchUsers()
+            fetchSmtpConfig()
         }
-    }, [fetchUsers, authLoading])
+    }, [fetchUsers, fetchSmtpConfig, authLoading])
+
+    const saveSmtpConfig = async () => {
+        // Validation
+        if (!smtpConfig.host || !smtpConfig.user || !smtpConfig.password || !smtpConfig.fromEmail) {
+            toast({
+                variant: "destructive",
+                title: "Validation Error",
+                description: "SMTP Host, User, Password, and From Email are required."
+            })
+            return
+        }
+
+        setIsSavingSmtp(true)
+        try {
+            const { error } = await supabase
+                .from('app_settings')
+                .upsert({ key: 'smtp_config', value: smtpConfig }, { onConflict: 'key' })
+
+            if (error) throw error
+
+            toast({ title: "Settings Saved", description: "SMTP configuration has been updated." })
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Save Failed", description: error.message })
+        } finally {
+            setIsSavingSmtp(false)
+        }
+    }
 
     const handleSelectAll = () => {
         if (selectedUsers.size === users.length) {
@@ -115,7 +178,8 @@ export default function BroadcastPage() {
                 body: JSON.stringify({
                     recipients,
                     subject,
-                    message
+                    message,
+                    smtpSettings: smtpConfig
                 })
             })
 
@@ -153,6 +217,92 @@ export default function BroadcastPage() {
                 </h1>
                 <p className="text-muted-foreground">Select users and send announcements, newsletters, or updates directly to their inbox.</p>
             </div>
+
+            {/* SMTP Configuration Section */}
+            <Card className="border-primary/20 bg-primary/5">
+                <CardHeader className="py-4 cursor-pointer select-none" onClick={() => setShowSmtpSettings(!showSmtpSettings)}>
+                    <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <Settings className="h-5 w-5 text-primary" />
+                            <CardTitle className="text-lg">SMTP Configuration</CardTitle>
+                            <Badge variant="outline" className="ml-2 bg-background">Required for Broadcast</Badge>
+                        </div>
+                        {showSmtpSettings ? <ChevronUp className="h-5 w-5 text-muted-foreground" /> : <ChevronDown className="h-5 w-5 text-muted-foreground" />}
+                    </div>
+                </CardHeader>
+                {showSmtpSettings && (
+                    <CardContent className="pb-6 space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">SMTP Host</label>
+                                <Input
+                                    placeholder="smtp.resend.com"
+                                    value={smtpConfig.host}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, host: e.target.value })}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Port</label>
+                                <Input
+                                    type="number"
+                                    placeholder="465"
+                                    value={smtpConfig.port}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, port: parseInt(e.target.value) || 0 })}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">From Email</label>
+                                <Input
+                                    placeholder="noreply@yourdomain.com"
+                                    value={smtpConfig.fromEmail}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, fromEmail: e.target.value })}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">From Name</label>
+                                <Input
+                                    placeholder="Support"
+                                    value={smtpConfig.fromName || ""}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, fromName: e.target.value })}
+                                    autoComplete="off"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">SMTP User</label>
+                                <Input
+                                    placeholder="resend"
+                                    value={smtpConfig.user}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, user: e.target.value })}
+                                    autoComplete="new-password"
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">SMTP Password</label>
+                                <Input
+                                    type="password"
+                                    placeholder="••••••••"
+                                    value={smtpConfig.password}
+                                    onChange={(e) => setSmtpConfig({ ...smtpConfig, password: e.target.value })}
+                                    autoComplete="new-password"
+                                />
+                            </div>
+                            <div className="flex items-end pb-1">
+                                <Button
+                                    onClick={saveSmtpConfig}
+                                    disabled={isSavingSmtp}
+                                    className="w-full"
+                                >
+                                    {isSavingSmtp ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
+                                    Save Config
+                                </Button>
+                            </div>
+                        </div>
+                    </CardContent>
+                )}
+            </Card>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 

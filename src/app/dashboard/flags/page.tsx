@@ -490,7 +490,9 @@ export default function FlaggedStationsPage() {
                         >
                           {group.station_name}
                         </Link>
-                        <div className="text-xs text-muted-foreground truncate max-w-[200px]">{group.station_address}</div>
+                        <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                          {group.station_address ? group.station_address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : 'No Address'}
+                        </div>
                       </TableCell>
                       <TableCell>
                         <Badge
@@ -585,7 +587,9 @@ export default function FlaggedStationsPage() {
                         >
                           {flag.station_name}
                         </Link>
-                        <div className="text-xs text-muted-foreground truncate max-w-[200px]">{flag.station_address}</div>
+                        <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                          {flag.station_address ? flag.station_address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : 'No Address'}
+                        </div>
                       </TableCell>
                       <TableCell>{getReasonBadge(flag.reason)}</TableCell>
                       <TableCell>

@@ -6,23 +6,21 @@ const supabaseKey = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PU
 
 const supabase = createClient(supabaseUrl, supabaseKey)
 
-export async function GET(request: Request) {
+export async function POST(request: Request) {
     try {
-        const { searchParams } = new URL(request.url)
-        const q = searchParams.get('q')
+        const { ids } = await request.json()
 
-        if (!q) {
+        if (!ids || !Array.isArray(ids) || ids.length === 0) {
             return NextResponse.json([])
         }
 
         const { data: users, error } = await supabase
             .from('profiles')
-            .select('id, full_name, email, city, avatar_url')
-            .or(`full_name.ilike.%${q}%,email.ilike.%${q}%,phone_number.ilike.%${q}%`)
-            .limit(20)
+            .select('id, full_name, email, avatar_url')
+            .in('id', ids)
 
         if (error) {
-            console.error('Error searching users:', error)
+            console.error('Error fetching users by IDs:', error)
             return NextResponse.json({ error: error.message }, { status: 500 })
         }
 

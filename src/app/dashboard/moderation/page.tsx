@@ -367,7 +367,9 @@ export default function ModerationPage() {
                             >
                               {item.station_name}
                             </Link>
-                            <div className="text-xs text-muted-foreground truncate max-w-[150px]">{item.station_address || 'No address'}</div>
+                            <div className="text-xs text-muted-foreground truncate max-w-[150px]">
+                              {item.station_address ? item.station_address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : 'No address'}
+                            </div>
                           </TableCell>
                           <TableCell>
                             {item.user_id ? (

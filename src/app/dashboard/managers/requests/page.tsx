@@ -171,7 +171,9 @@ export default function ManagerRequestsPage() {
                                         </h4>
                                         <div className="p-3 bg-card border rounded-lg">
                                             <p className="font-semibold">{request.stations?.name || 'Unknown Station'}</p>
-                                            <p className="text-sm text-muted-foreground">{request.stations?.address}</p>
+                                            <p className="text-sm text-muted-foreground">
+                                                {request.stations?.address ? request.stations.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : 'No address'}
+                                            </p>
                                             <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
                                                 <Badge variant="secondary" className="font-normal">
                                                     {request.stations?.city}, {request.stations?.state}

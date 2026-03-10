@@ -20,42 +20,44 @@ export async function POST(request: Request) {
             return NextResponse.json({ error: 'Title and message are required' }, { status: 400 })
         }
 
-        let query = supabase.from('profiles').select('id')
+        let userIds: string[] = []
 
-        // Apply filters based on segment or direct targeting
         if (targetUserIds && targetUserIds.length > 0) {
-            // Specific users
-            query = query.in('id', targetUserIds)
-        } else if (targetStates && targetStates.length > 0) {
-            // Multiple states
-            // Heuristic: city matches ANY of the target states
-            // content.ilike.%state1%, content.ilike.%state2% ...
-            // Supabase 'or' syntax: city.ilike.%State1%,city.ilike.%State2%
-            const orQuery = targetStates.map((s: string) => `city.ilike.%${s}%`).join(',')
-            query = query.or(orQuery)
-        } else if (segment === 'specific-state') {
-            // Fallback for generic 'single state' if mixed usage
-            const { targetState } = await request.clone().json().catch(() => ({}))
-            if (targetState) {
-                query = query.ilike('city', `%${targetState}%`)
+            // If we have specific user IDs, use them directly as the target
+            // This avoids RLS issues on the profiles table if the service role isn't enabled
+            userIds = targetUserIds
+        } else {
+            // Apply filters based on segment or state targeting
+            let query = supabase.from('profiles').select('id')
+
+            if (targetStates && targetStates.length > 0) {
+                // Multiple states
+                const orQuery = targetStates.map((s: string) => `city.ilike.%${s}%`).join(',')
+                query = query.or(orQuery)
+            } else if (segment === 'specific-state') {
+                const { targetState } = await request.clone().json().catch(() => ({}))
+                if (targetState) {
+                    query = query.ilike('city', `%${targetState}%`)
+                }
             }
-        }
-        // else 'all' -> no filter
 
-        const { data: users, error: userError } = await query
+            const { data: users, error: userError } = await query
 
-        if (userError) {
-            console.error('Error fetching users:', userError)
-            return NextResponse.json({ error: userError.message }, { status: 500 })
-        }
+            if (userError) {
+                console.error('Error fetching users:', userError)
+                return NextResponse.json({ error: userError.message }, { status: 500 })
+            }
 
-        if (!users || users.length === 0) {
-            return NextResponse.json({ message: 'No users found for this selection' }, { status: 200 })
+            if (!users || users.length === 0) {
+                return NextResponse.json({ message: 'No users found for this selection' }, { status: 200 })
+            }
+
+            userIds = users.map(u => u.id)
         }
 
         // Prepare notifications
-        const notifications = users.map(user => ({
-            user_id: user.id,
+        const notifications = userIds.map(id => ({
+            user_id: id,
             title: title,
             message: message,
             is_read: false,

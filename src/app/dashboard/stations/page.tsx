@@ -564,7 +564,9 @@ export default function StationsPage() {
                       <TableRow key={station.id} className="table-row-hover">
                         <TableCell>
                           <div className="font-medium text-sm">{station.name}</div>
-                          <div className="text-xs text-muted-foreground truncate max-w-[200px]">{station.address || 'No address'}</div>
+                          <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                            {station.address ? station.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : 'No address'}
+                          </div>
                         </TableCell>
                         <TableCell className="text-sm">{station.brand || "—"}</TableCell>
                         <TableCell>
@@ -718,7 +720,7 @@ export default function StationsPage() {
                       >
                         <div className="p-2 min-w-[200px]">
                           <h3 className="font-semibold text-sm mb-1">{selectedMapStation.name}</h3>
-                          <p className="text-xs text-muted-foreground mb-2">{selectedMapStation.address || "No address"}</p>
+                          <p className="text-xs text-muted-foreground mb-2">{selectedMapStation.address ? selectedMapStation.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : "No address"}</p>
                           <div className="flex items-center gap-2 mb-3">
                             <Badge variant={selectedMapStation.is_active ? "default" : "secondary"} className="text-xs">
                               {selectedMapStation.is_active ? "Active" : "Inactive"}
@@ -801,7 +803,7 @@ export default function StationsPage() {
                       <TableRow key={item.id} className="table-row-hover">
                         <TableCell>
                           <div className="font-medium text-sm">{item.name || "Unnamed Station"}</div>
-                          <div className="text-xs text-muted-foreground">{item.address || "No address"}</div>
+                          <div className="text-xs text-muted-foreground">{item.address ? item.address.replace(/^[A-Z0-9]{4}\+[A-Z0-9]{2,3}(?:,\s*)?/i, '') : "No address"}</div>
                         </TableCell>
                         <TableCell>
                           {item.latitude && item.longitude ? (
