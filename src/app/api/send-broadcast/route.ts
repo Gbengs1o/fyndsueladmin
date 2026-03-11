@@ -13,7 +13,7 @@ interface TemplateSettings {
 
 export async function POST(req: Request) {
     try {
-        const { recipients, subject, message, smtpSettings, templateSettings } = await req.json();
+        const { recipients, subject, message, smtpSettings, templateSettings, images } = await req.json();
 
         if (!recipients || !Array.isArray(recipients) || recipients.length === 0) {
             return NextResponse.json({ error: 'No recipients provided' }, { status: 400 });
@@ -48,6 +48,21 @@ export async function POST(req: Request) {
             showFooter: templateSettings?.showFooter !== false,
         };
 
+        // Prepare attachments
+        const attachments = (images || []).map((base64: string, index: number) => {
+            const match = base64.match(/^data:(image\/\w+);base64,(.+)$/);
+            if (!match) return null;
+            const contentType = match[1];
+            const content = match[2];
+            return {
+                filename: `image_${index}.${contentType.split('/')[1]}`,
+                content: content,
+                encoding: 'base64',
+                cid: `img_${index}@broadcast`,
+                contentType: contentType
+            };
+        }).filter(Boolean);
+
         // Template rendering logic — fully dynamic
         const getHtmlTemplate = (name: string, content: string) => {
             const formattedMessage = content.replace(/\n/g, '<br>');
@@ -61,6 +76,13 @@ export async function POST(req: Request) {
                     <p style="font-size: 12px; color: #6b7280; margin: 0;">${tpl.footerText}</p>
                 </div>`
                 : '';
+
+            // Generate HTML for attached images
+            const imagesHtml = (attachments || []).map((att: any) => `
+                <div style="margin-top: 24px; border-radius: 8px; overflow: hidden; border: 1px solid #e5e7eb;">
+                    <img src="cid:${att.cid}" alt="Attachment" style="width: 100%; height: auto; display: block;" />
+                </div>
+            `).join('');
 
             return `
 <!DOCTYPE html>
@@ -80,6 +102,7 @@ export async function POST(req: Request) {
         <div style="padding: 40px 32px;">
             <div style="font-size: 18px; font-weight: 600; color: #111827; margin-bottom: 16px;">${tpl.greetingPrefix} ${name || 'User'},</div>
             <div style="font-size: 16px; color: #374151; margin-bottom: 32px; line-height: 1.6;">${formattedMessage}</div>
+            ${imagesHtml}
         </div>
         ${footerHtml}
     </div>
@@ -95,7 +118,8 @@ export async function POST(req: Request) {
                 from: `"${smtpSettings.fromName || 'Support'}" <${smtpSettings.fromEmail}>`,
                 to: recipient.email,
                 subject: subject,
-                html: getHtmlTemplate(recipient.name, message)
+                html: getHtmlTemplate(recipient.name, message),
+                attachments: attachments as any[]
             });
         });
 

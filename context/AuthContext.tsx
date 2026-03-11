@@ -114,15 +114,21 @@ export function AuthProvider({ children }: PropsWithChildren) {
           .select()
           .single();
 
-        if (createError) {
-          console.error('Error creating profile:', createError);
-          // Don't throw here, just leave profile as null so the app doesn't crash, 
-          // but maybe show a UI warning if possible.
-        }
-
-        if (newProfile) {
+        if (newProfile && !createError) {
           setProfile(newProfile as ProfileType);
-        }
+          
+          // Centralized point awarding for new regular users
+          try {
+            await supabase.rpc('record_user_activity', { 
+              p_event_type: 'signup_basic',
+              p_metadata: { source: 'profile_creation' }
+            });
+          } catch (rpcError) {
+            console.warn("Could not record signup activity:", rpcError);
+          }
+        } 
+        
+        if (createError) {
       } else {
         console.error('Error fetching profile:', error);
       }

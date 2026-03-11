@@ -80,6 +80,7 @@ const PREDEFINED_TRIGGERS = [
     { value: "add_new_station", label: "Add New Station" },
     { value: "invite_friend", label: "Invite Friend" },
     { value: "signup_with_code", label: "Signup with Code" },
+    { value: "signup_basic", label: "Signup (Standard)" },
     { value: "daily_login", label: "Daily Login" },
 ]
 
@@ -317,6 +318,7 @@ export default function GamificationPage() {
             "add_new_station",
             "invite_friend",
             "signup_with_code",
+            "signup_basic",
             "daily_login"
         ];
 
@@ -769,7 +771,7 @@ export default function GamificationPage() {
                             variant="destructive"
                             size="icon"
                             onClick={handleDeleteAction}
-                            disabled={deletingAction || ["report_fuel_price", "add_new_station", "invite_friend", "signup_with_code", "daily_login"].includes(editingAction?.action_key || '')}
+                            disabled={deletingAction || ["report_fuel_price", "add_new_station", "invite_friend", "signup_with_code", "signup_basic", "daily_login"].includes(editingAction?.action_key || '')}
                             title="Delete Rule"
                         >
                             {deletingAction ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}

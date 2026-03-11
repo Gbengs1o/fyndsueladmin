@@ -48,6 +48,17 @@ export default function SignUpScreen() {
         if (error) {
             Alert.alert('Sign Up Failed', error.message);
         } else {
+            // Record the signup activity for gamification points
+            try {
+                await supabase.rpc('record_user_activity', { 
+                    p_event_type: 'signup_basic',
+                    p_metadata: { source: 'mobile_signup' }
+                });
+            } catch (rpcError) {
+                console.warn("Could not record signup activity:", rpcError);
+                // We don't block the user if gamification fails
+            }
+
             Alert.alert('Success!', 'Your account has been created. Please check your email to verify your account before signing in.');
             // CORRECTED LINE: The path now correctly matches your file name `signIn.tsx`
             router.replace('/signIn');

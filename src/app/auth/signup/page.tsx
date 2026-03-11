@@ -72,8 +72,18 @@ export default function SignUpPage() {
                 ])
 
             if (profileError) throw profileError
+            
+            // 3. Record the signup activity for gamification points (if user is auto-signed in)
+            try {
+                await supabase.rpc('record_user_activity', { 
+                    p_event_type: 'signup_basic',
+                    p_metadata: { source: 'web_signup' }
+                });
+            } catch (rpcError) {
+                console.warn("Could not record signup activity:", rpcError);
+            }
 
-            // 3. Redirect to Verification Photo Upload
+            // 4. Redirect to Verification Photo Upload
             router.push('/auth/verify')
         } catch (err: any) {
             setError(err.message || 'Something went wrong')

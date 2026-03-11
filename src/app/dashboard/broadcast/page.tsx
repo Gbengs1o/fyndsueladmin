@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Mail, Send, CheckSquare, Square, Search, User, Settings, Save, ChevronDown, ChevronUp, Palette, Image, Type } from "lucide-react"
+import { Loader2, Mail, Send, CheckSquare, Square, Search, User, Settings, Save, ChevronDown, ChevronUp, Palette, Image, Type, X, UploadCloud, FileImage } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -57,6 +57,8 @@ export default function BroadcastPage() {
     const [message, setMessage] = useState("")
     const [sending, setSending] = useState(false)
     const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+    const [selectedImages, setSelectedImages] = useState<{ id: string; file: File; preview: string; base64: string }[]>([])
+    const [isImageUploading, setIsImageUploading] = useState(false)
 
     // Template Settings State
     const [templateSettings, setTemplateSettings] = useState({
@@ -218,6 +220,62 @@ export default function BroadcastPage() {
         setSelectedUsers(newSelected)
     }
 
+    const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const files = e.target.files
+        if (!files || files.length === 0) return
+
+        setIsImageUploading(true)
+        const newImages = [...selectedImages]
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i]
+            
+            // Check file type
+            if (!file.type.startsWith('image/')) {
+                toast({ variant: "destructive", title: "Invalid file", description: `${file.name} is not an image.` })
+                continue
+            }
+
+            // Check file size (limit to 2MB for base64 transport)
+            if (file.size > 2 * 1024 * 1024) {
+                toast({ variant: "destructive", title: "File too large", description: `${file.name} is larger than 2MB.` })
+                continue
+            }
+
+            // Convert to base64
+            const reader = new FileReader()
+            const base64Promise = new Promise<string>((resolve) => {
+                reader.onload = () => resolve(reader.result as string)
+                reader.readAsDataURL(file)
+            })
+
+            const base64 = await base64Promise
+            const preview = URL.createObjectURL(file)
+            
+            newImages.push({
+                id: Math.random().toString(36).substring(2, 9),
+                file,
+                preview,
+                base64
+            })
+        }
+
+        setSelectedImages(newImages)
+        setIsImageUploading(false)
+        // Reset input
+        e.target.value = ''
+    }
+
+    const removeImage = (id: string) => {
+        setSelectedImages(prev => {
+            const imageToRemove = prev.find(img => img.id === id)
+            if (imageToRemove) {
+                URL.revokeObjectURL(imageToRemove.preview)
+            }
+            return prev.filter(img => img.id !== id)
+        })
+    }
+
     const handleSendBroadcast = async () => {
         if (selectedUsers.size === 0) {
             toast({ variant: "destructive", title: "No recipients", description: "Please select at least one user." })
@@ -245,7 +303,8 @@ export default function BroadcastPage() {
                     subject,
                     message,
                     smtpSettings: smtpConfig,
-                    templateSettings
+                    templateSettings,
+                    images: selectedImages.map(img => img.base64)
                 })
             })
 
@@ -265,6 +324,7 @@ export default function BroadcastPage() {
             setSubject("")
             setMessage("")
             setSelectedUsers(new Set())
+            setSelectedImages([])
 
         } catch (error: any) {
             console.error("Broadcast error:", error)
@@ -586,9 +646,56 @@ export default function BroadcastPage() {
                                 <Textarea
                                     placeholder="Type your message here..."
                                     className="min-h-[200px] resize-none"
-                                    value={message}
                                     onChange={(e) => setMessage(e.target.value)}
                                 />
+                            </div>
+
+                            {/* Image Attachments Section */}
+                            <div className="space-y-3">
+                                <Label>Image Attachments (Fliers)</Label>
+                                {selectedImages.length > 0 && (
+                                    <div className="grid grid-cols-3 gap-2 mb-2">
+                                        {selectedImages.map((img) => (
+                                            <div key={img.id} className="relative group aspect-square rounded-md overflow-hidden border">
+                                                <img 
+                                                    src={img.preview} 
+                                                    alt="Preview" 
+                                                    className="w-full h-full object-cover"
+                                                />
+                                                <button
+                                                    onClick={() => removeImage(img.id)}
+                                                    className="absolute top-1 right-1 p-1 bg-destructive text-destructive-foreground rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                                                >
+                                                    <X className="h-3 w-3" />
+                                                </button>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="flex items-center gap-2">
+                                    <Label
+                                        htmlFor="image-upload"
+                                        className="flex items-center justify-center gap-2 w-full h-10 px-4 py-2 border-2 border-dashed rounded-md cursor-pointer hover:bg-muted/50 transition-colors text-sm font-medium text-muted-foreground"
+                                    >
+                                        {isImageUploading ? <Loader2 className="h-4 w-4 animate-spin" /> : <UploadCloud className="h-4 w-4" />}
+                                        {isImageUploading ? "Uploading..." : "Upload Image"}
+                                    </Label>
+                                    <input
+                                        id="image-upload"
+                                        type="file"
+                                        accept="image/*"
+                                        multiple
+                                        className="hidden"
+                                        onChange={handleImageUpload}
+                                        disabled={isImageUploading}
+                                    />
+                                </div>
+                                <p className="text-[10px] text-muted-foreground italic">
+                                    Maximum 2MB per image. Images will be embedded in the email.
+                                </p>
+                            </div>
+
+                            <div className="space-y-2">
                                 <div className="flex items-center justify-between">
                                     <p className="text-xs text-muted-foreground">
                                         Emails are sent individually.
@@ -621,6 +728,15 @@ export default function BroadcastPage() {
                                                         <div style={{ fontSize: '16px', color: '#374151', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
                                                             {message || 'Your message will appear here...'}
                                                         </div>
+                                                        {selectedImages.length > 0 && (
+                                                            <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                                                                {selectedImages.map((img) => (
+                                                                    <div key={img.id} style={{ borderRadius: '8px', overflow: 'hidden', border: '1px solid #e5e7eb' }}>
+                                                                        <img src={img.preview} alt="Attachment" style={{ width: '100%', height: 'auto', display: 'block' }} />
+                                                                    </div>
+                                                                ))}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                     {templateSettings.showFooter && templateSettings.footerText && (
                                                         <div style={{ padding: '32px', backgroundColor: '#f3f4f6', textAlign: 'center', borderTop: '1px solid #e5e7eb' }}>
