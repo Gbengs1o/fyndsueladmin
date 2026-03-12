@@ -25,6 +25,7 @@ import { Label } from "@/components/ui/label"
 interface UserProfile {
     id: string;
     full_name: string | null;
+    nickname: string | null;
     email: string | null;
     avatar_url: string | null;
     phone: string | null;
@@ -122,6 +123,11 @@ export default function UserDetailPage() {
     const [isEditNameOpen, setIsEditNameOpen] = React.useState(false)
     const [newName, setNewName] = React.useState("")
     const [isSavingName, setIsSavingName] = React.useState(false)
+
+    // Edit Nickname local state
+    const [isEditNicknameOpen, setIsEditNicknameOpen] = React.useState(false)
+    const [newNickname, setNewNickname] = React.useState("")
+    const [isSavingNickname, setIsSavingNickname] = React.useState(false)
 
     const fetchUserData = React.useCallback(async () => {
         if (!userId) return
@@ -347,6 +353,38 @@ export default function UserDetailPage() {
         }
     }
 
+    const handleUpdateNickname = async () => {
+        if (!user) return
+        setIsSavingNickname(true)
+
+        try {
+            // Snapshot for logging
+            const { data: previousState } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+
+            const { error } = await supabase
+                .from('profiles')
+                .update({ nickname: newNickname.trim() || null })
+                .eq('id', user.id)
+
+            if (error) throw error
+
+            await logAdminAction('UPDATE_USER', 'profiles', user.id, {
+                field: 'nickname',
+                old_value: user.nickname,
+                new_value: newNickname.trim() || null,
+                previous_state: previousState
+            })
+
+            toast({ title: "Nickname Updated", description: "User nickname has been changed successfully." })
+            setIsEditNicknameOpen(false)
+            fetchUserData()
+        } catch (error: any) {
+            toast({ variant: "destructive", title: "Error", description: error.message })
+        } finally {
+            setIsSavingNickname(false)
+        }
+    }
+
     const getActivityStatusStyle = (status?: UserProfile["activity_status"]) => {
         switch (status) {
             case "online":
@@ -494,21 +532,46 @@ export default function UserDetailPage() {
                                     <UserIcon className="w-12 h-12" />
                                 </AvatarFallback>
                             </Avatar>
-                            <div className="flex items-center gap-2">
-                                <CardTitle className="text-2xl">{user.full_name || "Anonymous User"}</CardTitle>
-                                <Button
-                                    variant="ghost"
-                                    size="icon"
-                                    className="h-6 w-6 text-muted-foreground hover:text-primary"
-                                    onClick={() => {
-                                        setNewName(user.full_name || "")
-                                        setIsEditNameOpen(true)
-                                    }}
-                                >
-                                    <Pencil className="h-3 w-3" />
-                                </Button>
+                            <div className="flex flex-col items-center">
+                                <div className="flex items-center gap-2">
+                                    <CardTitle className="text-2xl">{user.full_name || "Anonymous User"}</CardTitle>
+                                    <Button
+                                        variant="ghost"
+                                        size="icon"
+                                        className="h-6 w-6 text-muted-foreground hover:text-primary"
+                                        onClick={() => {
+                                            setNewName(user.full_name || "")
+                                            setIsEditNameOpen(true)
+                                        }}
+                                    >
+                                        <Pencil className="h-3 w-3" />
+                                    </Button>
+                                </div>
+                                {user.nickname ? (
+                                    <div className="flex items-center gap-1 mt-1 text-primary cursor-pointer hover:underline"
+                                        onClick={() => {
+                                            setNewNickname(user.nickname || "")
+                                            setIsEditNicknameOpen(true)
+                                        }}
+                                    >
+                                        <span className="text-sm font-medium">@{user.nickname}</span>
+                                        <Pencil className="h-2 w-2" />
+                                    </div>
+                                ) : (
+                                    <Button
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-2 text-[10px] text-muted-foreground mt-1"
+                                        onClick={() => {
+                                            setNewNickname("")
+                                            setIsEditNicknameOpen(true)
+                                        }}
+                                    >
+                                        Add nickname
+                                    </Button>
+                                )}
                             </div>
-                            <CardDescription>{user.email || user.phone}</CardDescription>
+                            <CardDescription className="mt-2">{user.email || user.phone}</CardDescription>
                         </CardHeader>
                         <CardContent className="text-sm">
                             <div className="flex flex-col gap-2 mb-6">
@@ -867,6 +930,44 @@ export default function UserDetailPage() {
                         </Button>
                         <Button onClick={handleUpdateName} disabled={isSavingName || !newName.trim()}>
                             {isSavingName && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                            Save Changes
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
+            {/* Edit Nickname Dialog */}
+            <Dialog open={isEditNicknameOpen} onOpenChange={setIsEditNicknameOpen}>
+                <DialogContent>
+                    <DialogHeader>
+                        <DialogTitle>Edit User Nickname</DialogTitle>
+                        <DialogDescription>
+                            Update the user's unique nickname. This will be displayed as @nickname.
+                        </DialogDescription>
+                    </DialogHeader>
+                    <div className="grid gap-4 py-4">
+                        <div className="grid gap-2">
+                            <Label htmlFor="nickname">Nickname</Label>
+                            <div className="relative">
+                                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground">@</span>
+                                <Input
+                                    id="nickname"
+                                    value={newNickname}
+                                    onChange={(e) => setNewNickname(e.target.value.toLowerCase().replace(/\s/g, ''))}
+                                    className="pl-7"
+                                    placeholder="coolslug88"
+                                    disabled={isSavingNickname}
+                                />
+                            </div>
+                            <p className="text-[10px] text-muted-foreground">Nickname will be converted to lowercase and spaces removed.</p>
+                        </div>
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setIsEditNicknameOpen(false)} disabled={isSavingNickname}>
+                            Cancel
+                        </Button>
+                        <Button onClick={handleUpdateNickname} disabled={isSavingNickname}>
+                            {isSavingNickname && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                             Save Changes
                         </Button>
                     </DialogFooter>

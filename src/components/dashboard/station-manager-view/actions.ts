@@ -31,13 +31,27 @@ export async function getOverviewData(managerId: string, stationId?: number) {
         .eq('id', targetStationId)
         .single();
 
-    // 3. Fetch Official Benchmarks
-    const { data: officialPriceData } = await supabase
+    // 3. Fetch Official Benchmarks with National Fallback
+    let { data: officialPriceData } = await supabase
         .from('official_prices')
         .select('pms_price')
-        .eq('state', station?.state || 'Oyo')
+        .eq('state', station?.state || 'National')
         .eq('brand', 'all')
         .maybeSingle();
+
+    // Fallback to National if state price is missing
+    if (!officialPriceData?.pms_price && station?.state !== 'National') {
+        const { data: nationalPrice } = await supabase
+            .from('official_prices')
+            .select('pms_price')
+            .eq('state', 'National')
+            .eq('brand', 'all')
+            .maybeSingle();
+        
+        if (nationalPrice) {
+            officialPriceData = nationalPrice;
+        }
+    }
 
     // 4. Fetch Nearby Stations (Market Context)
     const { data: nearby } = await supabase

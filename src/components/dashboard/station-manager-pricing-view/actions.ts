@@ -64,15 +64,29 @@ export async function updateStationPricesAdmin(formData: FormData, stationId: nu
 }
 
 export async function getPricingData(stationId: number, state: string, latitude: number, longitude: number) {
-    // 1. Fetch Official State Price
-    const { data: officialPriceData } = await supabase
+    // 1. Fetch Official State Price with National Fallback
+    let { data: officialPriceData } = await supabase
         .from('official_prices')
         .select('pms_price')
         .eq('state', state)
         .eq('brand', 'all')
         .maybeSingle();
 
-    const statePrice = parseFloat(officialPriceData?.pms_price as any) || 650;
+    // Fallback to National
+    if (!officialPriceData?.pms_price && state !== 'National') {
+        const { data: nationalPrice } = await supabase
+            .from('official_prices')
+            .select('pms_price')
+            .eq('state', 'National')
+            .eq('brand', 'all')
+            .maybeSingle();
+        
+        if (nationalPrice) {
+            officialPriceData = nationalPrice;
+        }
+    }
+
+    const statePrice = parseFloat(officialPriceData?.pms_price as any) || 0;
 
     // 2. Fetch Nearby Stations
     const { data: nearby } = await supabase

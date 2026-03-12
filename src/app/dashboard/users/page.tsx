@@ -55,6 +55,7 @@ import { Progress } from "@/components/ui/progress"
 interface UserProfile {
   id: string
   full_name: string | null
+  nickname: string | null
   email: string | null
   avatar_url: string | null
   phone: string | null
@@ -347,7 +348,7 @@ export default function UsersPage() {
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
-                placeholder="Search by name, email, or phone..."
+                placeholder="Search by name, nickname, email, or phone..."
                 className="pl-10"
                 value={searchTerm}
                 onChange={e => setSearchTerm(e.target.value)}
@@ -417,6 +418,9 @@ export default function UsersPage() {
                         <div>
                           <div className="font-medium text-sm flex items-center gap-2">
                             {user.full_name || "Anonymous"}
+                            {user.nickname && (
+                              <span className="text-[10px] text-muted-foreground font-normal">@{user.nickname}</span>
+                            )}
                             {user.role === 'admin' && <Badge variant="outline" className="text-[10px] h-4 px-1 border-primary text-primary">Admin</Badge>}
                             {user.is_banned && <Badge variant="destructive" className="text-[10px] h-4 px-1">Banned</Badge>}
                           </div>
@@ -553,7 +557,12 @@ export default function UsersPage() {
                   <AvatarFallback className="text-lg"><UserIcon className="h-6 w-6" /></AvatarFallback>
                 </Avatar>
                 <div>
-                  <div className="font-semibold text-lg">{selectedUser.full_name || 'Anonymous User'}</div>
+                  <div className="font-semibold text-lg flex items-center gap-2">
+                    {selectedUser.full_name || 'Anonymous User'}
+                    {selectedUser.nickname && (
+                      <span className="text-xs text-muted-foreground font-normal">@{selectedUser.nickname}</span>
+                    )}
+                  </div>
                   <div className="text-sm text-muted-foreground">{selectedUser.email || selectedUser.phone}</div>
                   <div className="flex items-center gap-1 text-xs text-muted-foreground mt-1">
                     <Calendar className="h-3 w-3" />

@@ -54,8 +54,11 @@ import { LiveActivityFeed } from "@/components/dashboard/live-activity-feed";
 // --- Define Types for our Fetched Data ---
 interface Stats {
   totalStations: number;
+  totalStationsTrend?: string;
   activeUsers: number;
+  activeUsersTrend?: string;
   totalSubmissions: number;
+  totalSubmissionsTrend?: string;
   pendingSuggestions: number;
   totalFlags: number;
   verifiedManagers: number;
@@ -215,15 +218,29 @@ export default function DashboardPage() {
         }
 
         if (data) {
+          console.log("Dashboard Stats Data:", data);
           setStats({
             totalStations: data.totalStations ?? 0,
+            totalStationsTrend: data.totalStationsTrend,
             activeUsers: data.activeUsers ?? 0,
+            activeUsersTrend: data.activeUsersTrend,
             totalSubmissions: data.totalSubmissions ?? 0,
+            totalSubmissionsTrend: data.totalSubmissionsTrend,
             pendingSuggestions: data.pendingSuggestions ?? 0,
             totalFlags: data.totalFlags ?? 0,
             verifiedManagers: data.verifiedManagers ?? 0,
           });
-          setGamificationStats(data.gamification);
+          console.log("Setting Gamification Stats:", data.gamification);
+          
+          let gStats = data.gamification;
+          if (typeof gStats === 'string') {
+            try {
+              gStats = JSON.parse(gStats);
+            } catch (e) {
+              console.error("Failed to parse gamification stats string:", e);
+            }
+          }
+          setGamificationStats(gStats);
         }
       } catch (error) {
         console.error("Error fetching unified stats:", error);
@@ -355,7 +372,7 @@ export default function DashboardPage() {
             id: s.id,
             name: s.name,
             created_at: s.created_at,
-            submitted_by: s.profiles?.full_name || 'Anonymous',
+            submitted_by: s.profiles?.full_name || 'Fynd Fuel App',
             avatar_url: s.profiles?.avatar_url,
           }));
           setRecentSuggestions(formattedSuggestions);
@@ -368,7 +385,7 @@ export default function DashboardPage() {
             station_name: f.stations?.name || 'Unknown Station',
             reason: f.reason,
             created_at: f.created_at,
-            user_name: f.profiles?.full_name || 'Anonymous',
+            user_name: f.profiles?.full_name || 'Fynd Fuel App',
             avatar_url: f.profiles?.avatar_url,
           }));
           setRecentFlags(formattedFlags);
@@ -438,7 +455,7 @@ export default function DashboardPage() {
           value={stats?.totalStations}
           icon={Fuel}
           trend="up"
-          trendValue="+12 this month"
+          trendValue={stats?.totalStationsTrend || "Calculating..."}
           delay={0}
           loading={statsLoading}
         />
@@ -458,7 +475,7 @@ export default function DashboardPage() {
           value={stats?.activeUsers}
           icon={Users}
           trend="up"
-          trendValue="+8% growth"
+          trendValue={stats?.activeUsersTrend || "Calculating..."}
           iconBgClass="icon-container-success"
           iconColorClass="text-emerald-600 dark:text-emerald-500"
           delay={50}
@@ -470,7 +487,7 @@ export default function DashboardPage() {
           value={stats?.totalSubmissions}
           icon={CheckCheck}
           trend="up"
-          trendValue="+24 today"
+          trendValue={stats?.totalSubmissionsTrend || "Calculating..."}
           delay={100}
           loading={statsLoading}
         />
@@ -796,7 +813,7 @@ export default function DashboardPage() {
                           <AvatarImage src={station.avatar_url || ''} />
                           <AvatarFallback className="bg-muted text-xs"><User className="h-3 w-3" /></AvatarFallback>
                         </Avatar>
-                        <span className="text-sm text-muted-foreground">{station.added_by || 'Anonymous'}</span>
+                        <span className="text-sm text-muted-foreground">{station.added_by || 'Fynd Fuel App'}</span>
                       </div>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground">{format(new Date(station.created_at), "MMM d, yyyy")}</TableCell>

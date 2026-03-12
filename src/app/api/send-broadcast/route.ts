@@ -65,7 +65,7 @@ export async function POST(req: Request) {
 
         // Template rendering logic — fully dynamic
         const getHtmlTemplate = (name: string, content: string) => {
-            const formattedMessage = content.replace(/\n/g, '<br>');
+            const formattedMessage = content;
 
             const logoHtml = tpl.logoImageUrl
                 ? `<img src="${tpl.logoImageUrl}" alt="${tpl.logoText || 'Logo'}" style="max-height: 48px; max-width: 200px;" />`

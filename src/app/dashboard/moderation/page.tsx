@@ -72,6 +72,7 @@ interface Submission {
   photo_url: string | null
   status: 'Pending' | 'Approved' | 'Rejected' | 'Flagged'
   created_at: string
+  user_nickname: string | null
   total_count?: number
 }
 
@@ -154,7 +155,7 @@ export default function ModerationPage() {
       .select(`
         id, price, fuel_type, notes, rating, photo_url, status, created_at, station_id,
         stations!price_reports_station_id_fkey(name, address),
-        profiles!price_reports_user_id_fkey(id, full_name, avatar_url)
+        profiles!price_reports_user_id_fkey(id, full_name, nickname, avatar_url)
       `, { count: 'exact' })
       .eq('status', activeTab)
       .order('created_at', { ascending: false })
@@ -174,6 +175,7 @@ export default function ModerationPage() {
         station_address: item.stations?.address || null,
         user_id: item.profiles?.id || null,
         user_name: item.profiles?.full_name || null,
+        user_nickname: item.profiles?.nickname || null,
         user_avatar: item.profiles?.avatar_url || null,
         fuel_type: item.fuel_type || 'PMS',
         submitted_price: item.price,
@@ -277,7 +279,8 @@ export default function ModerationPage() {
   const filteredSubmissions = searchTerm
     ? submissions.filter(s =>
       s.station_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      s.user_name?.toLowerCase().includes(searchTerm.toLowerCase())
+      s.user_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      s.user_nickname?.toLowerCase().includes(searchTerm.toLowerCase())
     )
     : submissions
 
@@ -382,7 +385,12 @@ export default function ModerationPage() {
                                   <AvatarImage src={item.user_avatar || ''} />
                                   <AvatarFallback className="text-xs"><UserIcon className="h-3 w-3" /></AvatarFallback>
                                 </Avatar>
-                                <span className="text-sm hover:underline">{item.user_name || 'Anonymous'}</span>
+                                <div className="flex flex-col">
+                                  <span className="text-sm hover:underline leading-none">{item.user_name || 'Anonymous'}</span>
+                                  {item.user_nickname && (
+                                    <span className="text-[10px] text-muted-foreground leading-none mt-0.5">@{item.user_nickname}</span>
+                                  )}
+                                </div>
                               </Link>
                             ) : (
                               <div className="flex items-center gap-2">
@@ -548,7 +556,12 @@ export default function ModerationPage() {
                         <AvatarImage src={selectedSubmission.user_avatar || ''} />
                         <AvatarFallback className="text-xs"><UserIcon className="h-3 w-3" /></AvatarFallback>
                       </Avatar>
-                      <span className="font-medium text-sm hover:underline">{selectedSubmission.user_name || 'Anonymous'}</span>
+                      <div className="flex flex-col">
+                        <span className="font-medium text-sm hover:underline leading-none">{selectedSubmission.user_name || 'Anonymous'}</span>
+                        {selectedSubmission.user_nickname && (
+                          <span className="text-[10px] text-muted-foreground leading-none mt-0.5">@{selectedSubmission.user_nickname}</span>
+                        )}
+                      </div>
                     </Link>
                   ) : (
                     <div className="font-medium text-sm text-muted-foreground">Anonymous</div>

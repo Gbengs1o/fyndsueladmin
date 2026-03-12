@@ -6,11 +6,17 @@ import { useRouter } from "next/navigation"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import { useToast } from "@/hooks/use-toast"
-import { Loader2, Mail, Send, CheckSquare, Square, Search, User, Settings, Save, ChevronDown, ChevronUp, Palette, Image, Type, X, UploadCloud, FileImage } from "lucide-react"
+import { cn } from "@/lib/utils"
+import { 
+    Loader2, Mail, Send, CheckSquare, Square, Search, User, Settings, Save, 
+    ChevronDown, ChevronUp, Palette, Image, Type, X, UploadCloud, FileImage,
+    Maximize2, Minimize2, Columns
+} from "lucide-react"
 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
+import { RichTextEditor } from "@/components/ui/rich-text-editor"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
@@ -57,6 +63,7 @@ export default function BroadcastPage() {
     const [message, setMessage] = useState("")
     const [sending, setSending] = useState(false)
     const [isPreviewOpen, setIsPreviewOpen] = useState(false)
+    const [viewMode, setViewMode] = useState<'split' | 'recipients' | 'message'>('split')
     const [selectedImages, setSelectedImages] = useState<{ id: string; file: File; preview: string; base64: string }[]>([])
     const [isImageUploading, setIsImageUploading] = useState(false)
 
@@ -430,18 +437,41 @@ export default function BroadcastPage() {
                 )}
             </Card>
 
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className={cn(
+                "grid grid-cols-1 gap-6 transition-all duration-300 ease-in-out",
+                viewMode === 'split' ? "lg:grid-cols-3" : "grid-cols-1"
+            )}>
 
-                {/* Left Column: User Selection (2/3 width) */}
-                <div className="lg:col-span-2 space-y-4">
+                {/* Left Column: User Selection (2/3 width when split) */}
+                <div className={cn(
+                    "space-y-4 transition-all duration-500",
+                    viewMode === 'recipients' ? "lg:col-span-3" : viewMode === 'split' ? "lg:col-span-2" : "hidden"
+                )}>
                     <Card className="h-full flex flex-col">
                         <CardHeader className="pb-3">
-                            <div className="flex items-center justify-between">
-                                <CardTitle>Select Recipients</CardTitle>
-                                <div className="text-sm text-muted-foreground">
-                                    {selectedUsers.size} selected
+                                <div className="flex items-center gap-4">
+                                    <CardTitle>Select Recipients</CardTitle>
+                                    <div className="flex items-center bg-muted/50 rounded-md p-0.5">
+                                        <Button 
+                                            variant={viewMode === 'split' ? "secondary" : "ghost"} 
+                                            size="icon" 
+                                            className="h-7 w-7"
+                                            onClick={() => setViewMode('split')}
+                                            title="Split View"
+                                        >
+                                            <Columns className="h-3.5 w-3.5" />
+                                        </Button>
+                                        <Button 
+                                            variant={viewMode === 'recipients' ? "secondary" : "ghost"} 
+                                            size="icon" 
+                                            className="h-7 w-7"
+                                            onClick={() => setViewMode('recipients')}
+                                            title="Focus Recipients"
+                                        >
+                                            <Maximize2 className="h-3.5 w-3.5" />
+                                        </Button>
+                                    </div>
                                 </div>
-                            </div>
                             <div className="flex items-center gap-2 mt-2">
                                 <div className="relative flex-1">
                                     <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
@@ -533,11 +563,37 @@ export default function BroadcastPage() {
                     </Card>
                 </div>
 
-                {/* Right Column: Compose Message (1/3 width) */}
-                <div className="lg:col-span-1">
-                    <Card className="sticky top-6">
+
+                {/* Right Column: Compose Message (1/3 width when split) */}
+                <div className={cn(
+                    "transition-all duration-500",
+                    viewMode === 'recipients' ? "hidden" : viewMode === 'message' ? "lg:col-span-1" : "lg:col-span-1"
+                )}>
+                    <Card className={cn(viewMode !== 'message' && "sticky top-6")}>
                         <CardHeader>
-                            <CardTitle>Compose Message</CardTitle>
+                            <div className="flex items-center justify-between">
+                                <CardTitle>Compose Message</CardTitle>
+                                <div className="flex items-center bg-muted/50 rounded-md p-0.5">
+                                    <Button 
+                                        variant={viewMode === 'split' ? "secondary" : "ghost"} 
+                                        size="icon" 
+                                        className="h-7 w-7"
+                                        onClick={() => setViewMode('split')}
+                                        title="Split View"
+                                    >
+                                        <Columns className="h-3.5 w-3.5" />
+                                    </Button>
+                                    <Button 
+                                        variant={viewMode === 'message' ? "secondary" : "ghost"} 
+                                        size="icon" 
+                                        className="h-7 w-7"
+                                        onClick={() => setViewMode('message')}
+                                        title="Focus Composer"
+                                    >
+                                        <Maximize2 className="h-3.5 w-3.5" />
+                                    </Button>
+                                </div>
+                            </div>
                             <CardDescription>
                                 Sending to <span className="font-semibold text-foreground">{selectedUsers.size}</span> recipients
                             </CardDescription>
@@ -643,10 +699,10 @@ export default function BroadcastPage() {
                             </div>
                             <div className="space-y-2">
                                 <Label>Message Body</Label>
-                                <Textarea
+                                <RichTextEditor
+                                    value={message}
+                                    onChange={setMessage}
                                     placeholder="Type your message here..."
-                                    className="min-h-[200px] resize-none"
-                                    onChange={(e) => setMessage(e.target.value)}
                                 />
                             </div>
 
@@ -725,9 +781,10 @@ export default function BroadcastPage() {
                                                     </div>
                                                     <div style={{ padding: '40px 32px' }}>
                                                         <div style={{ fontSize: '18px', fontWeight: '600', color: '#111827', marginBottom: '16px' }}>{templateSettings.greetingPrefix || 'Hello'} [User Name],</div>
-                                                        <div style={{ fontSize: '16px', color: '#374151', lineHeight: '1.6', whiteSpace: 'pre-wrap' }}>
-                                                            {message || 'Your message will appear here...'}
-                                                        </div>
+                                                        <div 
+                                                            style={{ fontSize: '16px', color: '#374151', lineHeight: '1.6' }}
+                                                            dangerouslySetInnerHTML={{ __html: message || '<p>Your message will appear here...</p>' }}
+                                                        />
                                                         {selectedImages.length > 0 && (
                                                             <div style={{ marginTop: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
                                                                 {selectedImages.map((img) => (
