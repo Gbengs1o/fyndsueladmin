@@ -32,6 +32,7 @@ import { cn } from "@/lib/utils";
 interface RichTextEditorProps {
     value: string;
     onChange: (value: string) => void;
+    onPasteImage?: (files: File[]) => void;
     placeholder?: string;
 }
 
@@ -74,7 +75,7 @@ const MenuButton = ({
     </TooltipProvider>
 );
 
-export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorProps) {
+export function RichTextEditor({ value, onChange, onPasteImage, placeholder }: RichTextEditorProps) {
     const editor = useEditor({
         extensions: [
             StarterKit,
@@ -89,6 +90,21 @@ export function RichTextEditor({ value, onChange, placeholder }: RichTextEditorP
         ],
         content: value,
         immediatelyRender: false,
+        editorProps: {
+            handlePaste: (view, event) => {
+                const items = Array.from(event.clipboardData?.items || []);
+                const imageFiles = items
+                    .filter(item => item.type.startsWith("image/"))
+                    .map(item => item.getAsFile())
+                    .filter((file): file is File => file !== null);
+
+                if (imageFiles.length > 0 && onPasteImage) {
+                    onPasteImage(imageFiles);
+                    return true; // prevent default paste behavior for images
+                }
+                return false;
+            },
+        },
         onUpdate: ({ editor }) => {
             onChange(editor.getHTML());
         },
