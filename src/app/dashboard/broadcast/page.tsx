@@ -780,7 +780,7 @@ export default function BroadcastPage() {
                                         {templateSettings.logoImageUrl && (
                                             <div className="mt-4 p-4 rounded-2xl bg-muted/20 border border-dashed border-muted-foreground/20 flex flex-col items-center gap-3">
                                                 <p className="text-[9px] font-black uppercase tracking-widest text-muted-foreground/50">Logo Preview</p>
-                                                <div className="bg-white dark:bg-zinc-950 p-6 rounded-xl shadow-sm max-w-full overflow-hidden flex items-center justify-center">
+                                                 <div className="p-6 rounded-xl shadow-sm max-w-full overflow-hidden flex items-center justify-center">
                                                     <img 
                                                         src={templateSettings.logoImageUrl} 
                                                         alt="Logo Preview" 
